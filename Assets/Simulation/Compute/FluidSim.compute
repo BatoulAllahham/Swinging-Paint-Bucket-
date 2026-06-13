@@ -13,6 +13,7 @@
 // Includes
 #include "./FluidMaths3D.hlsl"
 #include "./SpatialHash3D.hlsl"
+#include "./CanvasCollision.hlsl"
 
 static const int ThreadGroupSize = 256;
 
@@ -47,6 +48,13 @@ const float3 boundsSize;
 
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
+
+// CANVAS
+const float3 canvasCentre;
+const float3 canvasNormal;
+const float3 canvasRight;
+const float3 canvasUp;
+const float2 canvasHalfSize;
 
 const float2 interactionInputPoint;
 const float interactionInputStrength;
@@ -489,10 +497,19 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         return;
 
     float3 vel = Velocities[id.x];
-    float3 pos = Positions[id.x];
-    pos += vel * deltaTime;
-    
+    float3 prevPos = Positions[id.x];
+    float3 pos = prevPos + vel * deltaTime;
+
     ResolveCollisions(pos, vel, collisionDamping);
+
+    // CANVAS
+    const float particleRadius = smoothingRadius * 0.5;
+    const float canvasRestitution = 0.0;
+    const float canvasTangentDamping = 0.3;
+
+    SweptSpherePlaneCollision(pos, vel, prevPos, particleRadius, canvasRestitution, canvasTangentDamping,
+        canvasCentre, canvasNormal, canvasRight, canvasUp, canvasHalfSize);
+
      
     // Write results
     Positions[id.x] = pos;
