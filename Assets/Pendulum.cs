@@ -13,8 +13,8 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float thetaAngularVelocity = 30.0f;
     [SerializeField] float phiAngularVelocity = 30.0f;
 
-    [SerializeField] float thetaDegree = 45.0f;
-    [SerializeField] float phiDegree = 45.0f;
+    [SerializeField] float thetaDegree = 0.0f;
+    [SerializeField] float phiDegree = 0.0f;
     [SerializeField] float gravity = 9.81f;
     [SerializeField] float ropeLength = 10.0f;
     [SerializeField] float airDensity = 1.225f;
@@ -28,7 +28,57 @@ public class Pendulum : MonoBehaviour
     private float phiRadian;
     private float thetaAngularVelo;
     private float phiAngularVelo;
+    private bool isDragging = false;
+    private float cameraDistance;
 
+
+
+    public void OnMouseDown()
+    {
+        isDragging = true;
+        cameraDistance = Vector3.Distance(Camera.main.transform.position, transform.position);
+        thetaAngularVelo = 0.0f;
+        phiAngularVelo = 0.0f;
+    }
+
+    public void OnMouseDrag()
+    {
+        // 1. Create an invisible plane that faces the camera and passes through the hang point
+        Plane dragPlane = new Plane(Camera.main.transform.forward, hangPoint.position);
+
+        // 2. Shoot a ray from the mouse position
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+        // 3. Find where the ray hits the plane
+        if (dragPlane.Raycast(ray, out float distance))
+        {
+            Vector3 hitPoint = ray.GetPoint(distance);
+
+            // 4. Constrain the position to the rope length (keep it on a sphere)
+            Vector3 offset = hitPoint - hangPoint.position;
+            offset = offset.normalized * ropeLength;
+            Vector3 constrainedPos = hangPoint.position + offset;
+
+            // 5. Apply position and update the rope visually
+            transform.position = constrainedPos;
+            UpdateRope();
+
+            // 6. Convert the new position back to Theta and Phi radians
+            Vector3 relPos = constrainedPos - hangPoint.position;
+
+            // Added Mathf.Clamp to prevent math errors if you drag directly above the pivot
+            thetaRadian = Mathf.Acos(Mathf.Clamp(-relPos.y / ropeLength, -1f, 1f));
+            phiRadian = Mathf.Atan2(-relPos.z, relPos.x);
+
+            thetaDegree = thetaRadian * Mathf.Rad2Deg;
+            phiDegree = phiRadian * Mathf.Rad2Deg;
+        }
+    }
+
+    void OnMouseUp()
+    {
+        isDragging = false;
+    }
 
 
 
@@ -58,22 +108,7 @@ public class Pendulum : MonoBehaviour
 
 
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    //We put here all the initializations
-    void Start()
-    {
-       
-        thetaRadian = Mathf.Deg2Rad * thetaDegree;
-        phiRadian = Mathf.Deg2Rad * phiDegree;
-        thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity;
-        phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity;
-        UpdateRope();
-        transform.position = getPosition() + hangPoint.position;
-        //UpdateRope();
 
-        Debug.Log("Debug");
-
-    }
 
 
 
@@ -108,6 +143,7 @@ public class Pendulum : MonoBehaviour
 
     float[] Step(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
     {
+        //[θ̈,φ̈,θ̇,φ̇]
         float[] ret = {
         getThetaAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
         getPhiAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
@@ -121,14 +157,15 @@ public class Pendulum : MonoBehaviour
 
     float[] RungeKutta_4th(float dt)
     {
-       
+
+        //k2​=f(yn​+2dt​k1​)
         float[] k1 = Step(thetaAngularVelo, phiAngularVelo, thetaRadian);
         float[] k2 = Step(thetaAngularVelo + k1[0] * 0.5f * dt, phiAngularVelo + 0.5f * k1[1] * dt, thetaRadian + 0.5f * k1[2] * dt);
         float[] k3 = Step(thetaAngularVelo + 0.5f * k2[0] * dt, phiAngularVelo + 0.5f * k2[1] * dt, thetaRadian + 0.5f * k2[2] * dt);
         float[] k4 = Step(thetaAngularVelo + k3[0] * dt, phiAngularVelo + k3[1] * dt, thetaRadian + k3[2] * dt);
 
         float[] sum = {
-            dt * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) / 6,
+            dt * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) / 6,   //[Δθ̇,Δφ̇,Δθ,Δφ],,,,,,,,,Δy=6dt​(k1​+2k2​+2k3​+k4​) rule 
             dt * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]) / 6,
             dt * (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]) / 6,
             dt * (k1[3] + 2*k2[3] + 2*k3[3] + k4[3]) / 6
@@ -139,34 +176,46 @@ public class Pendulum : MonoBehaviour
 
 
 
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    //We put here all the initializations
+    void Start()
+    {
 
+        thetaRadian = Mathf.Deg2Rad * thetaDegree;
+        phiRadian = Mathf.Deg2Rad * phiDegree;
+        thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity ;
+        phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity ;
+        UpdateRope();
+        transform.position = getPosition() + hangPoint.position;
+
+
+    }
 
 
     private void FixedUpdate()
     {
-        float[] state = RungeKutta_4th(Time.fixedDeltaTime);
-        thetaAngularVelo += state[0];
-        phiAngularVelo += state[1];
+        if (!isDragging)
+        {
+            float[] state = RungeKutta_4th(Time.fixedDeltaTime);
+            thetaAngularVelo += state[0];       //θ˙new​=θ˙old​+Δθ˙
+            phiAngularVelo += state[1];         //ϕ˙​new​=ϕ˙​old​+Δϕ˙​
 
-        thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg;
-        phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg;
+            thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg ;
+            phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg ;
 
-        thetaRadian += state[2];       
-        phiRadian += state[3];
+            thetaRadian += state[2];      //equivalent to θnew​=θold​+Δθ       
+            phiRadian += state[3];          //ϕnew​=ϕold​+Δϕ
 
-        thetaDegree = thetaRadian * Mathf.Rad2Deg;
-        phiDegree = phiRadian * Mathf.Rad2Deg;
+            thetaDegree = thetaRadian * Mathf.Rad2Deg;
+            phiDegree = phiRadian * Mathf.Rad2Deg;
 
-        transform.position = getPosition() + hangPoint.position;
+            transform.position = getPosition() + hangPoint.position;
 
+            Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
+            Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
+            transform.rotation = Orientation * correction;
 
-
-        Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
-
-        Quaternion correction = Quaternion.Inverse(
-                                   Quaternion.LookRotation(Vector3.up, transform.position)
-                                );
-        transform.rotation = Orientation * correction;
+        }
         UpdateRope();
 
 
@@ -176,12 +225,12 @@ public class Pendulum : MonoBehaviour
 
     void UpdateRope()
     {
-        Vector3 direction = transform.position - hangPoint.position;
-        rope.position = hangPoint.position + direction * 0.5f;
+        Vector3 direction = transform.position - hangPoint.position;  //pivot to bucket
+        rope.position = hangPoint.position + direction * 0.5f; //to place the rope halfway between the pivot and the bucket as meshes are modeled centered around their own origin.
         rope.up = direction.normalized;
         Vector3 scale = rope.localScale;
-        scale.y = direction.magnitude;
-        rope.localScale = scale;
+        scale.y = direction.magnitude;   //compute the length of the rope and set it as the y scale of the rope
+        rope.localScale = scale; //to stretch the rope to the correct length
     }
 
 
