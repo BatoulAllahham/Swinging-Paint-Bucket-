@@ -13,8 +13,8 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float thetaAngularVelocity = 30.0f;
     [SerializeField] float phiAngularVelocity = 30.0f;
 
-    [SerializeField] float thetaDegree = 0.0f;
-    [SerializeField] float phiDegree = 0.0f;
+    [SerializeField] float thetaDegree = 45.0f;
+    [SerializeField] float phiDegree = 45.0f;
     [SerializeField] float gravity = 9.81f;
     [SerializeField] float ropeLength = 10.0f;
     [SerializeField] float airDensity = 1.225f;
@@ -110,10 +110,6 @@ public class Pendulum : MonoBehaviour
 
 
 
-
-
-
-
     float getThetaAngularAcceleration(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
     {
         float sinTheta = Mathf.Sin(thetaRadian);
@@ -134,7 +130,7 @@ public class Pendulum : MonoBehaviour
         {
             sinTheta = 0.001f + 0.0001f;
         }
-        float phiAngularAcceleration = -2 * (Mathf.Cos(thetaRadian) / sinTheta * thetaAngularVelo * phiAngularVelo) - (0.5f * airDensity * Mathf.PI * Mathf.Pow(bucketRadius, 2)) *0.5f* phiAngularVelo / Mathf.Pow(ropeLength,2);
+        float phiAngularAcceleration = -2 * (Mathf.Cos(thetaRadian) / sinTheta * thetaAngularVelo  * phiAngularVelo) - (0.5f * airDensity * Mathf.PI * Mathf.Pow(bucketRadius, 2)) *0.5f* phiAngularVelo / Mathf.Pow(ropeLength,2);
         return phiAngularAcceleration;
     }
 
@@ -184,7 +180,7 @@ public class Pendulum : MonoBehaviour
         thetaRadian = Mathf.Deg2Rad * thetaDegree;
         phiRadian = Mathf.Deg2Rad * phiDegree;
         thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity ;
-        phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity ;
+        phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity  ;
         UpdateRope();
         transform.position = getPosition() + hangPoint.position;
 
@@ -200,7 +196,7 @@ public class Pendulum : MonoBehaviour
             thetaAngularVelo += state[0];       //θ˙new​=θ˙old​+Δθ˙
             phiAngularVelo += state[1];         //ϕ˙​new​=ϕ˙​old​+Δϕ˙​
 
-            thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg ;
+            thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg  ;
             phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg ;
 
             thetaRadian += state[2];      //equivalent to θnew​=θold​+Δθ       
