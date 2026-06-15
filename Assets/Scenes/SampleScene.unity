@@ -1302,6 +1302,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: floorTransform
+      value: 
+      objectReference: {fileID: 1512319532}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: bucketTransform
       value: 
       objectReference: {fileID: 355358247}
