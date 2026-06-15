@@ -13,7 +13,6 @@
 // Includes
 #include "./FluidMaths3D.hlsl"
 #include "./SpatialHash3D.hlsl"
-#include "./CanvasCollision.hlsl"
 
 static const int ThreadGroupSize = 256;
 
@@ -49,13 +48,6 @@ const float3 boundsSize;
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
 
-// CANVAS
-const float3 canvasCentre;
-const float3 canvasNormal;
-const float3 canvasRight;
-const float3 canvasUp;
-const float2 canvasHalfSize;
-
 const float2 interactionInputPoint;
 const float interactionInputStrength;
 const float interactionInputRadius;
@@ -63,7 +55,8 @@ const float interactionInputRadius;
 // Volume texture settings
 RWTexture3D<float> DensityMap;
 const uint3 densityMapSize;
-
+const float holeSize;
+float sceneFloorY;
 // ---- Foam, spray, and bubbles ----
 struct WhiteParticle
 {
@@ -106,63 +99,61 @@ float Remap01(float val, float minVal, float maxVal)
     return saturate((val - minVal) / (maxVal - minVal));
 }
 
+
+
 void ResolveCollisions(inout float3 pos, inout float3 vel, float collisionDamping)
 {
-    // Transform position/velocity to the local space of the bounding box
     float3 posLocal = mul(worldToLocal, float4(pos, 1)).xyz;
     float3 velocityLocal = mul(worldToLocal, float4(vel, 0)).xyz;
 
-    // Calculate distance from box on each axis (negative values are outside box)
-    const float3 halfSize = 0.5;
-    const float3 edgeDst = halfSize - abs(posLocal);
+    const float bucketRadius = 0.5;
+    const float floorY = -1.0; 
+    const float ceilingY = 1.0;
+    float isDone=0;
+    float horizontalDist = length(posLocal.xz);
 
-    //simulating the hole in bucket
-    // Define the boundaries of the hole in local space on the bottom floor (Y = -0.5)
-    // For example, a hole centered at X=0, Z=0 with a width of 0.2 and length of 0.2
-    const float2 holeMin = float2(-0.1, -0.1); 
-    const float2 holeMax = float2(0.1, 0.1);
-
-    // Check if the particle is over the horizontal region of the hole
-    bool isOverHole = (posLocal.x >= holeMin.x && posLocal.x <= holeMax.x) &&
-                      (posLocal.z >= holeMin.y && posLocal.z <= holeMax.y);
+ if (sceneFloorY +0.05>pos.y)
+ {
+        pos = mul(localToWorld, float4(posLocal, 1)).xyz;
+        vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
   
-
-    // Resolve X and Z collisions normally
-    if (edgeDst.x <= 0)
-    {
-        posLocal.x = halfSize.x * sign(posLocal.x);
-        velocityLocal.x *= -1 * collisionDamping;
+        pos.y = sceneFloorY ; // Add a small offset to prevent sticking to the floor
+        
+        vel.y *= -1 * collisionDamping;
+        vel.xz *= 0.00001; 
+       
     }
-    if (edgeDst.z <= 0)
+ else{
+       if (horizontalDist >= bucketRadius)
     {
-        posLocal.z = halfSize.z * sign(posLocal.z);
-        velocityLocal.z *= -1 * collisionDamping;
+        posLocal.xz = normalize(posLocal.xz) * bucketRadius;
+        float2 wallNormal = normalize(posLocal.xz);
+        float dotVel = dot(velocityLocal.xz, wallNormal);
+        if (dotVel > 0)
+        {
+            velocityLocal.xz -= (1.0 + collisionDamping) * dotVel * wallNormal;
+        }
     }
 
-    // Resolve Y collisions (Ceiling and Floor)
-// Resolve Y collisions (Ceiling and Floor Coordinated)
-if (edgeDst.y <= 0)
+    bool isOverHole = (abs(posLocal.x) <= holeSize && abs(posLocal.z) <= holeSize);
+
+
+if (posLocal.y >= ceilingY)
 {
-    // Let's explicitly check which local side matches your visual floor.
-    // If particles are escaping from the top, it means your visual floor 
-    // corresponds to a POSITIVE local Y coordinate (posLocal.y > 0).
-    
-    if (posLocal.y > 0 && isOverHole)
+    if (!isOverHole)
     {
-        // If it hits the visual floor (which is local positive Y due to inverted coordinates)
-        // AND it's inside the hole, let it fall through!
-        // Do nothing, bypass snapping
-    }
-    else
-    {
-        // Solid wall collision: snap position and bounce velocity
-        posLocal.y = halfSize.y * sign(posLocal.y);
+        posLocal.y = ceilingY;
         velocityLocal.y *= -1 * collisionDamping;
     }
 }
-
+else if (posLocal.y <= floorY)
+{
+    posLocal.y = floorY;
+    velocityLocal.y *= -1 * collisionDamping;
+}
     pos = mul(localToWorld, float4(posLocal, 1)).xyz;
     vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
+}
 }
 [numthreads(ThreadGroupSize, 1, 1)]
 void ExternalForces(uint3 id : SV_DispatchThreadID)
@@ -497,19 +488,10 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         return;
 
     float3 vel = Velocities[id.x];
-    float3 prevPos = Positions[id.x];
-    float3 pos = prevPos + vel * deltaTime;
-
+    float3 pos = Positions[id.x];
+    pos += vel * deltaTime;
+    
     ResolveCollisions(pos, vel, collisionDamping);
-
-    // CANVAS
-    const float particleRadius = smoothingRadius * 0.5;
-    const float canvasRestitution = 0.0;
-    const float canvasTangentDamping = 0.3;
-
-    SweptSpherePlaneCollision(pos, vel, prevPos, particleRadius, canvasRestitution, canvasTangentDamping,
-        canvasCentre, canvasNormal, canvasRight, canvasUp, canvasHalfSize);
-
      
     // Write results
     Positions[id.x] = pos;

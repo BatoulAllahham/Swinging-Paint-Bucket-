@@ -13,12 +13,7 @@ namespace Seb.Fluid.Simulation
 		public event Action<FluidSim> SimulationInitCompleted;
         [Header("Moving Container References")]
          public Transform bucketTransform;
-
-        // CANVAS
-        [Header("Canvas Collision")]
-        public CanvasCollisionData canvasCollision;
-
-        [Header("Time Step")] public float normalTimeScale = 1;
+		[Header("Time Step")] public float normalTimeScale = 1;
 		public float slowTimeScale = 0.1f;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
 		public int iterationsPerFrame = 3;
@@ -29,6 +24,8 @@ namespace Seb.Fluid.Simulation
 		public float pressureMultiplier = 288;
 		public float nearPressureMultiplier = 2.15f;
 		public float viscosityStrength = 0;
+		public float holeSize = 0.1f;
+		public Transform floorTransform; // This will hold the actual Floor object
 		[Range(0, 1)] public float collisionDamping = 0.95f;
 
 		[Header("Foam Settings")] public bool foamActive;
@@ -43,6 +40,8 @@ namespace Seb.Fluid.Simulation
 		public int bubbleClassifyMinNeighbours = 15;
 		public float bubbleScale = 0.5f;
 		public float bubbleChangeScaleSpeed = 7;
+
+		
 
 		[Header("Volumetric Render Settings")] public bool renderToTex3D;
 		public int densityTextureRes;
@@ -91,7 +90,7 @@ namespace Seb.Fluid.Simulation
 		Spawner3D.SpawnData spawnData;
 		Dictionary<ComputeBuffer, string> bufferNameLookup;
 
-        void Start()
+		void Start()
 		{
 			Debug.Log("Controls: Space = Play/Pause, Q = SlowMode, R = Reset");
 			isPaused = false;
@@ -276,24 +275,7 @@ namespace Seb.Fluid.Simulation
 				float maxDeltaTime = maxTimestepFPS > 0 ? 1 / maxTimestepFPS : float.PositiveInfinity; // If framerate dips too low, run the simulation slower than real-time
 				float dt = Mathf.Min(Time.deltaTime * ActiveTimeScale, maxDeltaTime);
 				RunSimulationFrame(dt);
-                if (!isPaused)
-                {
-                    Vector3[] allPos = new Vector3[positionBuffer.count];
-                    positionBuffer.GetData(allPos);
-
-                    float minY = float.MaxValue;
-                    Vector3 lowest = Vector3.zero;
-                    foreach (var p in allPos)
-                    {
-                        if (p.y < minY)
-                        {
-                            minY = p.y;
-                            lowest = p;
-                        }
-                    }
-                    Debug.Log($"Lowest particle: {lowest}");
-                }
-            }
+			}
 
 			if (pauseNextFrame)
 			{
@@ -382,7 +364,7 @@ namespace Seb.Fluid.Simulation
 				UpdateSmoothingConstants();
 			}
 
-			Vector3 simBoundsSize = transform.localScale;
+			Vector3 simBoundsSize = bucketTransform.localScale;
 			
             Vector3 simBoundsCentre = bucketTransform.position;
 			compute.SetFloat("deltaTime", stepDeltaTime);
@@ -397,14 +379,18 @@ namespace Seb.Fluid.Simulation
 			compute.SetFloat("viscosityStrength", viscosityStrength);
 			compute.SetVector("boundsSize", simBoundsSize);
 			compute.SetVector("centre", simBoundsCentre);
+			compute.SetFloat("holeSize", holeSize);
+			if (floorTransform != null)
+{
+    
+    compute.SetFloat("sceneFloorY", floorTransform.position.y); 
+}
 
 	
-			compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
-			compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
-			// CANVAS
-            canvasCollision.SetShaderParams(compute);
-            // Foam settings
-            float fadeInT = (spawnRateFadeInTime <= 0) ? 1 : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
+compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
+compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
+			// Foam settings
+			float fadeInT = (spawnRateFadeInTime <= 0) ? 1 : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
 			compute.SetVector("trappedAirParams", new Vector3(trappedAirSpawnRate * fadeInT * fadeInT, trappedAirVelocityMinMax.x, trappedAirVelocityMinMax.y));
 			compute.SetVector("kineticEnergyParams", foamKineticEnergyMinMax);
 			compute.SetFloat("bubbleBuoyancy", bubbleBuoyancy);
@@ -479,14 +465,6 @@ namespace Seb.Fluid.Simulation
 			public float scale;
 		}
 
-		void OnDrawGizmos()
-		{
-			// // Draw Bounds
-			// var m = Gizmos.matrix;
-			// Gizmos.matrix = transform.localToWorldMatrix;
-			// Gizmos.color = new Color(0, 1, 0, 0.5f);
-			// Gizmos.DrawWireCube(Vector3.zero, Vector3.one);
-			// Gizmos.matrix = m;
-		}
+		
 	}
 }

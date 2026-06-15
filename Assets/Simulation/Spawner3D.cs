@@ -84,17 +84,17 @@ namespace Seb.Fluid.Simulation
             }
         }
 
-        void OnDrawGizmos()
-        {
-            if (showSpawnBounds && !Application.isPlaying)
-            {
-                foreach (SpawnRegion region in spawnRegions)
-                {
-                    Gizmos.color = region.debugDisplayCol;
-                    Gizmos.DrawWireCube(region.centre, Vector3.one * region.size);
-                }
-            }
-        }
+        // void OnDrawGizmos()
+        // {
+        //     if (showSpawnBounds && !Application.isPlaying)
+        //     {
+        //         foreach (SpawnRegion region in spawnRegions)
+        //         {
+        //             Gizmos.color = region.debugDisplayCol;
+        //             Gizmos.DrawWireCube(region.centre, Vector3.one * region.size);
+        //         }
+        //     }
+        // }
 
         [System.Serializable]
         public struct SpawnRegion
