@@ -486,7 +486,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 355358246}
-  m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!114 &355358251
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1306,6 +1306,10 @@ PrefabInstance:
       value: -10
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holeSize
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
       value: 
       objectReference: {fileID: -876546973899608171, guid: a2407126e3372f64cacb75ed466a5621, type: 3}
@@ -1323,7 +1327,7 @@ PrefabInstance:
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
-      value: 0.5
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
