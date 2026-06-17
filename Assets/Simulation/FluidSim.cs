@@ -17,8 +17,13 @@ namespace Seb.Fluid.Simulation
         // CANVAS
         [Header("Canvas Collision")]
         public CanvasCollisionData canvasCollision;
+		// UV
+		[Header("Paint Texture")]
+		public int paintTextureResolution = 512;
+		public Material canvasMaterial;
+		RenderTexture paintTexture;
 
-        [Header("Time Step")] public float normalTimeScale = 1;
+		[Header("Time Step")] public float normalTimeScale = 1;
 		public float slowTimeScale = 0.1f;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
 		public int iterationsPerFrame = 3;
@@ -262,15 +267,23 @@ namespace Seb.Fluid.Simulation
 
 			UpdateSmoothingConstants();
 
-			// Run single frame of sim with deltaTime = 0 to initialize density texture
-			// (so that display can work even if paused at start)
-			if (renderToTex3D)
+            if (renderToTex3D)
 			{
 				RunSimulationFrame(0);
 			}
+            // UV
+            SimulationInitCompleted?.Invoke(this);
 
-			SimulationInitCompleted?.Invoke(this);
-		}
+            paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
+            paintTexture.enableRandomWrite = true;
+            paintTexture.Create();
+
+            if (canvasMaterial != null)
+                canvasMaterial.mainTexture = paintTexture;
+
+            compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+            compute.SetInt("paintTextureSize", paintTextureResolution);
+        }
 
 		void Update()
 		{
@@ -397,6 +410,10 @@ namespace Seb.Fluid.Simulation
 
             // CANVAS
             canvasCollision.SetShaderParams(compute);
+            // UV
+            if (paintTexture != null)
+                compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+
 
             // Foam settings
             float fadeInT = (spawnRateFadeInTime <= 0) ? 1 : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);

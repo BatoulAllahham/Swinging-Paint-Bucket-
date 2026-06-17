@@ -55,6 +55,9 @@ const float3 canvasNormal;
 const float3 canvasRight;
 const float3 canvasUp;
 const float2 canvasHalfSize;
+//UV
+RWTexture2D<float4> PaintTexture;
+const int paintTextureSize;
 
 const float2 interactionInputPoint;
 const float interactionInputStrength;
@@ -169,6 +172,9 @@ void ExternalForces(uint3 id : SV_DispatchThreadID)
     if (id.x >= numParticles)
         return;
 
+    // Skip deposited particles
+    if (Positions[id.x].y < -500)
+        return;
     Velocities[id.x] += float3(0, gravity, 0) * deltaTime;
 
     PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * 1 / 120.0;
@@ -499,16 +505,36 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     float3 prevPos = Positions[id.x];
     float3 pos = prevPos + vel * deltaTime;
 
-    ResolveCollisions(pos, vel, collisionDamping);
+    //ResolveCollisions(pos, vel, collisionDamping);
 
     // CANVAS
     const float particleRadius = smoothingRadius * 0.5;
     const float canvasRestitution = 0.0;
     const float canvasTangentDamping = 0.3;
 
-    SweptSpherePlaneCollision(pos, vel, prevPos, particleRadius, canvasRestitution, canvasTangentDamping,
-        canvasCentre, canvasNormal, canvasRight, canvasUp, canvasHalfSize);
+    float2 hitUV;
+    bool didHit;
 
+    SweptSpherePlaneCollision(pos, vel, prevPos, particleRadius,
+    canvasRestitution, canvasTangentDamping,
+    canvasCentre, canvasNormal, canvasRight, canvasUp, canvasHalfSize,
+    hitUV, didHit);
+
+    if (didHit)
+    {
+        pos = float3(0, -1000, 0); // remove from simulation
+        vel = float3(0, 0, 0);
+
+        int2 coord = int2(
+        (int) (hitUV.x * paintTextureSize),
+        (int) (hitUV.y * paintTextureSize)
+    );
+        if (coord.x >= 0 && coord.x < paintTextureSize &&
+        coord.y >= 0 && coord.y < paintTextureSize)
+        {
+            PaintTexture[coord] = float4(0.0, 0.3, 1.0, 1.0);
+        }
+    }
      
     // Write results
     Positions[id.x] = pos;
