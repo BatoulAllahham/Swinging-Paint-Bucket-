@@ -72,6 +72,9 @@ namespace Seb.Fluid.Simulation
 		public ComputeBuffer predictedPositionsBuffer;
 		public ComputeBuffer debugBuffer { get; private set; }
 
+
+		public ComputeBuffer stateBuffer;
+		public ComputeBuffer sortTarget_stateBuffer; 
 		ComputeBuffer sortTarget_positionBuffer;
 		ComputeBuffer sortTarget_velocityBuffer;
 		ComputeBuffer sortTarget_predictedPositionsBuffer;
@@ -124,7 +127,8 @@ namespace Seb.Fluid.Simulation
 			foamSortTargetBuffer = CreateStructuredBuffer<FoamParticle>(maxFoamParticleCount);
 			foamCountBuffer = CreateStructuredBuffer<uint>(4096);
 			debugBuffer = CreateStructuredBuffer<float3>(numParticles);
-
+			stateBuffer = CreateStructuredBuffer<int>(numParticles);
+			sortTarget_stateBuffer = CreateStructuredBuffer<int>(numParticles);
 			sortTarget_positionBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
@@ -144,7 +148,9 @@ namespace Seb.Fluid.Simulation
 				{ foamCountBuffer, "WhiteParticleCounters" },
 				{ foamBuffer, "WhiteParticles" },
 				{ foamSortTargetBuffer, "WhiteParticlesCompacted" },
-				{ debugBuffer, "Debug" }
+				{ debugBuffer, "Debug" },
+				{ stateBuffer, "ParticleStates" },
+				{ sortTarget_stateBuffer, "SortTarget_ParticleStates" }
 			};
 
 			// Set buffer data
@@ -155,7 +161,8 @@ namespace Seb.Fluid.Simulation
 			{
 				positionBuffer,
 				predictedPositionsBuffer,
-				velocityBuffer
+				velocityBuffer,
+				
 			});
 
 			// Spatial hash kernel
@@ -176,7 +183,8 @@ namespace Seb.Fluid.Simulation
 				sortTarget_predictedPositionsBuffer,
 				velocityBuffer,
 				sortTarget_velocityBuffer,
-				spatialHash.SpatialIndices
+				spatialHash.SpatialIndices,
+				stateBuffer, sortTarget_stateBuffer
 			});
 
 			// Reorder copyback kernel
@@ -188,7 +196,8 @@ namespace Seb.Fluid.Simulation
 				sortTarget_predictedPositionsBuffer,
 				velocityBuffer,
 				sortTarget_velocityBuffer,
-				spatialHash.SpatialIndices
+				spatialHash.SpatialIndices,
+				stateBuffer, sortTarget_stateBuffer
 			});
 
 			// Density kernel
@@ -210,7 +219,8 @@ namespace Seb.Fluid.Simulation
 				spatialHash.SpatialOffsets,
 				foamBuffer,
 				foamCountBuffer,
-				debugBuffer
+				debugBuffer,
+				stateBuffer
 			});
 
 			// Viscosity kernel
@@ -227,7 +237,8 @@ namespace Seb.Fluid.Simulation
 			SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
 			{
 				positionBuffer,
-				velocityBuffer
+				velocityBuffer,
+				stateBuffer
 			});
 
 			// Render to 3d tex kernel
@@ -399,15 +410,14 @@ namespace Seb.Fluid.Simulation
 			compute.SetVector("centre", simBoundsCentre);
 			compute.SetFloat("holeSize", holeSize);
 			if (floorTransform != null)
-{
-    
-    compute.SetFloat("sceneFloorY", floorTransform.position.y); 
-}
+			{
+				
+					compute.SetFloat("sceneFloorY", floorTransform.position.y); 
+			}
 
-	
 			compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
 			compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
-
+		
             // CANVAS
             canvasCollision.SetShaderParams(compute);
             // UV
@@ -436,6 +446,7 @@ namespace Seb.Fluid.Simulation
 
 			debugBuffer.SetData(new float3[debugBuffer.count]);
 			foamCountBuffer.SetData(new uint[foamCountBuffer.count]);
+			stateBuffer.SetData(new int[positionBuffer.count]);
 			simTimer = 0;
 		}
 
