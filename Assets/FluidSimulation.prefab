@@ -314,7 +314,6 @@ MonoBehaviour:
     m_ColorSpace: -1
     m_NumColorKeys: 4
     m_NumAlphaKeys: 2
-  gradientResolution: 50
   velocityDisplayMax: 8
   meshResolution: 3
   sim: {fileID: 3811123279599950350}
@@ -529,6 +528,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c8b3b79f98be3f34e8fefade4cef2ade, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  bucketTransform: {fileID: 0}
+  canvasCollision: {fileID: 0}
+  paintTextureResolution: 512
+  canvasMaterial: {fileID: 0}
+  paintColour: {r: 0, g: 0, b: 1, a: 1}
   normalTimeScale: 1
   slowTimeScale: 0.1
   maxTimestepFPS: 60
@@ -539,6 +543,8 @@ MonoBehaviour:
   pressureMultiplier: 288
   nearPressureMultiplier: 2.16
   viscosityStrength: 0.1
+  holeSize: 0.1
+  floorTransform: {fileID: 0}
   collisionDamping: 0.95
   foamActive: 0
   maxFoamParticleCount: 1280000

@@ -490,9 +490,9 @@ namespace Seb.Helpers
 		// Load compute shader by name (must be placed in Resources folder)
 		public static ComputeShader LoadComputeShader(string name)
 		{
-			return Resources.Load<ComputeShader>(name.Split('.')[0]);
+			ComputeShader originalShader = Resources.Load<ComputeShader>(name.Split('.')[0]);
+			return UnityEngine.Object.Instantiate(originalShader);
 		}
-
 		// Get data (cpu readback) from buffer
 		public static T[] ReadbackData<T>(ComputeBuffer buffer)
 		{

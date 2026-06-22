@@ -59,6 +59,7 @@ const float2 canvasHalfSize;
 //UV
 RWTexture2D<float4> PaintTexture;
 const int paintTextureSize;
+const float4 paintColour;
 
 const float2 interactionInputPoint;
 const float interactionInputStrength;
@@ -544,7 +545,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         if (coord.x >= 0 && coord.x < paintTextureSize &&
         coord.y >= 0 && coord.y < paintTextureSize)
         {
-            PaintTexture[coord] = float4(0.0, 0.3, 1.0, 1.0);
+            PaintTexture[coord] = paintColour;
         }
     }
      

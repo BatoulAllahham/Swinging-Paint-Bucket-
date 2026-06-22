@@ -21,6 +21,7 @@ namespace Seb.Fluid.Simulation
 		[Header("Paint Texture")]
 		public int paintTextureResolution = 512;
 		public Material canvasMaterial;
+		public Color paintColour = Color.blue; // colour this bucket's particles paint onto the canvas
 		RenderTexture paintTexture;
 
 		[Header("Time Step")] public float normalTimeScale = 1;
@@ -113,6 +114,8 @@ namespace Seb.Fluid.Simulation
 
 		void Initialize()
 		{
+			compute = Instantiate(compute);
+
 			spawnData = spawner.GetSpawnData();
 			int numParticles = spawnData.points.Length;
 
@@ -285,12 +288,24 @@ namespace Seb.Fluid.Simulation
             // UV
             SimulationInitCompleted?.Invoke(this);
 
-            paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
-            paintTexture.enableRandomWrite = true;
-            paintTexture.Create();
+            // CANVAS IS ALWAYS SHARED: if another bucket has already created a paint
+            // texture on this canvasMaterial, reuse it instead of making a new one.
+            // This is what makes multiple buckets splatter onto the same canvas
+            // (different colours can overlap/mix). All buckets that should share a
+            // canvas must be assigned the same canvasMaterial asset in the Inspector.
+            if (canvasMaterial != null && canvasMaterial.mainTexture is RenderTexture existingPaintTexture)
+            {
+                paintTexture = existingPaintTexture;
+            }
+            else
+            {
+                paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
+                paintTexture.enableRandomWrite = true;
+                paintTexture.Create();
 
-            if (canvasMaterial != null)
-                canvasMaterial.mainTexture = paintTexture;
+                if (canvasMaterial != null)
+                    canvasMaterial.mainTexture = paintTexture;
+            }
 
             compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
             compute.SetInt("paintTextureSize", paintTextureResolution);
@@ -423,6 +438,7 @@ namespace Seb.Fluid.Simulation
             // UV
             if (paintTexture != null)
                 compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+            compute.SetVector("paintColour", paintColour);
 
 
             // Foam settings

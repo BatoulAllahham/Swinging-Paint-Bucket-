@@ -16,8 +16,8 @@ namespace Seb.Fluid.Rendering
 
 		[Header("Settings")] public DisplayMode mode;
 		public float scale;
-		public Gradient colourMap;
-		public int gradientResolution;
+		[HideInInspector] public Gradient colourMap;   
+		//[HideInInspector] public int gradientResolution = 2;
 		public float velocityDisplayMax;
 		public int meshResolution;
 
@@ -65,6 +65,12 @@ namespace Seb.Fluid.Rendering
 					mat.SetBuffer("Positions", sim.positionBuffer);
 					mat.SetBuffer("Velocities", sim.velocityBuffer);
 					mat.SetBuffer("DebugBuffer", sim.debugBuffer);
+
+
+					gradientTexture = new Texture2D(1, 1);
+					gradientTexture.SetPixel(0, 0, sim.paintColour);
+					gradientTexture.Apply();
+					mat.SetTexture("ColourMap", gradientTexture);
 				}
 			}
 
@@ -73,8 +79,6 @@ namespace Seb.Fluid.Rendering
 				if (needsUpdate)
 				{
 					needsUpdate = false;
-					TextureFromGradient(ref gradientTexture, gradientResolution, colourMap);
-					mat.SetTexture("ColourMap", gradientTexture);
 				}
 
 				mat.SetFloat("scale", scale * 0.01f);
