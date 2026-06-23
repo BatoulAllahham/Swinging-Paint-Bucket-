@@ -199,7 +199,7 @@ public class Pendulum : MonoBehaviour
         phiRadian = Mathf.Deg2Rad * phiDegree;
         thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity;
         phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity;
-        UpdateRope();
+        //UpdateRope();
         transform.position = getPosition() + hangPoint.position;
 
         //Debug.Log("Initial phi = " + phiRadian);
@@ -242,15 +242,15 @@ public class Pendulum : MonoBehaviour
     }
 
 
-    void UpdateRope()
-    {
-        Vector3 direction = transform.position - hangPoint.position;  //pivot to bucket
-        rope.position = hangPoint.position + direction * 0.5f; //to place the rope halfway between the pivot and the bucket as meshes are modeled centered around their own origin.
-        rope.up = direction.normalized;
-        Vector3 scale = rope.localScale;
-        scale.y = direction.magnitude;   //compute the length of the rope and set it as the y scale of the rope
-        rope.localScale = scale; //to stretch the rope to the correct length
-    }
+    //void UpdateRope()
+    //{
+    //    Vector3 direction = transform.position - hangPoint.position;  //pivot to bucket
+    //    rope.position = hangPoint.position + direction * 0.5f; //to place the rope halfway between the pivot and the bucket as meshes are modeled centered around their own origin.
+    //    rope.up = direction.normalized;
+    //    Vector3 scale = rope.localScale;
+    //    scale.y = direction.magnitude;   //compute the length of the rope and set it as the y scale of the rope
+    //    rope.localScale = scale; //to stretch the rope to the correct length
+    //}
 
 
     public Vector3 getLinearVelocity()

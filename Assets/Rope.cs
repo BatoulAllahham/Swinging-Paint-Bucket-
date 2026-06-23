@@ -6,6 +6,7 @@ public class Rope : MonoBehaviour
     [Header("References")]
     [SerializeField] Transform hangPoint;
     [SerializeField] Transform bucket;
+    [SerializeField] private Vector3 bucketTopOffset = new Vector3(0f, 0.5f, 0f);
 
     [Header("Rope Settings")]
     [SerializeField] int numSegments = 30; //how many pieces we brake the rope into
@@ -29,6 +30,9 @@ public class Rope : MonoBehaviour
     private Vector3[] vertices;
     private int[] triangles;
     private Vector2[] uv;
+
+
+
 
     void Start()
     {
@@ -62,14 +66,18 @@ public class Rope : MonoBehaviour
         previousPositions = new Vector3[numSegments + 1];
 
         //d = (End - Start) / ||End - Start||
-        Vector3 direction = (bucket.position - hangPoint.position).normalized;
+        Vector3 direction = (bucket.position - hangPoint.position ).normalized;
         if (direction == Vector3.zero) direction = Vector3.down;
 
         //loop over all the points and set them in the initial position
         for (int i = 0; i <= numSegments; i++)
         {
             //P_i = Start + d * (i * L_segment)
-            positions[i] = hangPoint.position + direction * segmentLength * i;
+            // If it's the last point, pin it to the top of the bucket!
+            if (i == numSegments)
+                positions[i] = bucket.TransformPoint(bucketTopOffset);
+            else
+                positions[i] = hangPoint.position + direction * segmentLength * i;
             previousPositions[i] = positions[i];
         }
     }
@@ -99,9 +107,8 @@ public class Rope : MonoBehaviour
     {
         //pinned points
         positions[0] = hangPoint.position;
-        positions[numSegments] = bucket.position;
-        //iteration to reduce the erros
-        for (int iter = 0; iter < constraintIterations; iter++)
+        positions[numSegments] = bucket.TransformPoint(bucketTopOffset);        
+        for (int iter = 0; iter < constraintIterations; iter++)    //iteration to reduce the erros
         {
             //we go over each pair of points
             for (int i = 0; i < numSegments; i++)
@@ -124,7 +131,7 @@ public class Rope : MonoBehaviour
             }
 
             positions[0] = hangPoint.position;
-            positions[numSegments] = bucket.position;
+            positions[numSegments] = bucket.TransformPoint(bucketTopOffset);
         }
     }
 
