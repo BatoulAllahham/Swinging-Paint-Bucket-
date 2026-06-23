@@ -8,10 +8,10 @@ public class Pendulum : MonoBehaviour
     //To connect the object in the scen with the script, they must have identical names to the ones in the scene
 
 
+    [Header("Physics")]
     public float bucketRadius = 1.0f;
     [SerializeField] float thetaAngularVelocity = 30.0f;
     [SerializeField] float phiAngularVelocity = 30.0f;
-
     [SerializeField] float thetaDegree = 45.0f;
     [SerializeField] float phiDegree = 45.0f;
     [SerializeField] float gravity = 9.81f;
@@ -31,52 +31,73 @@ public class Pendulum : MonoBehaviour
 
 
 
-    public void OnMouseDown()
-    {
-        isDragging = true;
-        cameraDistance = Vector3.Distance(Camera.main.transform.position, transform.position);
-        thetaAngularVelo = 0.0f;
-        phiAngularVelo = 0.0f;
-    }
+    private float previousTheta;
+    private float previousPhi;
+    private float previousTime;
 
-    public void OnMouseDrag()
-    {
-        // create an invisible plane that faces the camera (like a sheet of glass) at the height of the hang point
-        Plane dragPlane = new Plane(-Camera.main.transform.forward, hangPoint.position);
 
-        // shoot a ray from the mouse position
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+    //public void OnMouseDown()
+    //{
+    //    isDragging = true;
 
-        // find where the ray hits the plane
-        if (dragPlane.Raycast(ray, out float distance))
-        {
-            Vector3 hitPoint = ray.GetPoint(distance);
+    //    previousTheta = thetaRadian;
+    //    previousPhi = phiRadian;
+    //    previousTime = Time.time;
+    //}
 
-            // constrain the position to the rope length 
-            Vector3 offset = hitPoint - hangPoint.position;
-            offset = offset.normalized * ropeLength;
-            Vector3 constrainedPos = hangPoint.position + offset;
+    //public void OnMouseDrag()
+    //{
+    //    Plane dragPlane = new Plane(-Camera.main.transform.forward,hangPoint.position);
 
-            // apply position and update the rope visually
-            transform.position = constrainedPos;
-            //UpdateRope();
+    //    Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
 
-            // convert the new position back to Theta and Phi radians
-            Vector3 relPos = constrainedPos - hangPoint.position;
+    //    if (dragPlane.Raycast(ray, out float distance))
+    //    {
+    //        Vector3 hitPoint = ray.GetPoint(distance);
 
-            //added Mathf.Clamp to prevent math errors if you drag directly above the pivot
-            thetaRadian = Mathf.Acos(Mathf.Clamp(-relPos.y / ropeLength, -1f, 1f));
-            phiRadian = Mathf.Atan2(-relPos.z, relPos.x);
+    //        // Keep bucket at rope length
+    //        Vector3 offset = hitPoint - hangPoint.position;
+    //        offset = offset.normalized * ropeLength;
 
-            thetaDegree = thetaRadian * Mathf.Rad2Deg;
-            phiDegree = phiRadian * Mathf.Rad2Deg;
-        }
-    }
+    //        Vector3 constrainedPos = hangPoint.position + offset;
+    //        transform.position = constrainedPos;
 
-    void OnMouseUp()
-    {
-        isDragging = false;
-    }
+    //        // Convert position -> spherical coordinates
+    //        Vector3 relPos =constrainedPos - hangPoint.position;
+
+    //        thetaRadian = Mathf.Acos(Mathf.Clamp(-relPos.y / ropeLength,-1f,1f));
+    //        phiRadian =Mathf.Atan2(-relPos.z, relPos.x);
+
+    //        // Estimate angular velocity from mouse motion
+    //        float dt = Time.time - previousTime;
+
+    //        if (dt > 0.0001f)
+    //        {
+    //            thetaAngularVelo =(thetaRadian - previousTheta) / dt;
+
+    //            float deltaPhiDeg =Mathf.DeltaAngle(previousPhi * Mathf.Rad2Deg,phiRadian * Mathf.Rad2Deg);
+    //            float deltaPhiRad = deltaPhiDeg * Mathf.Deg2Rad;
+    //            phiAngularVelo =deltaPhiRad / dt;
+    //        }
+
+    //        previousTheta = thetaRadian;
+    //        previousPhi = phiRadian;
+    //        previousTime = Time.time;
+
+    //        thetaDegree =thetaRadian * Mathf.Rad2Deg;
+
+    //        phiDegree =phiRadian * Mathf.Rad2Deg;
+
+    //        thetaAngularVelocity =thetaAngularVelo * Mathf.Rad2Deg;
+
+    //        phiAngularVelocity =phiAngularVelo * Mathf.Rad2Deg;
+    //    }
+    //}
+
+    //public void OnMouseUp()
+    //{
+    //    isDragging = false;
+    //}
 
 
 
@@ -181,6 +202,9 @@ public class Pendulum : MonoBehaviour
         UpdateRope();
         transform.position = getPosition() + hangPoint.position;
 
+        //Debug.Log("Initial phi = " + phiRadian);
+        //Debug.Log("Initial phi velocity = " + phiAngularVelo);
+
 
     }
 
@@ -203,6 +227,8 @@ public class Pendulum : MonoBehaviour
             phiDegree = phiRadian * Mathf.Rad2Deg;
 
             transform.position = getPosition() + hangPoint.position;
+
+            //Debug.Log($"phi={phiDegree}, phiVel={phiAngularVelocity}");
 
             Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
             Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
