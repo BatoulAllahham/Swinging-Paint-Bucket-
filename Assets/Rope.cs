@@ -60,37 +60,28 @@ public class Rope : MonoBehaviour
     void InitializeRope()
     {
 
-        Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
-        float actualDistance = Vector3.Distance(hangPoint.position, attachPoint);
-
-        segmentLength = actualDistance / numSegments;
-
-
-        //-------------------
-        // --- ADD THESE 3 LINES ---
-        Debug.Log($"Bucket Center Position: {bucket.position}");
-        Debug.Log($"Bucket Top Offset in Inspector: {bucketTopOffset}");
-        Debug.Log($"Calculated Attach Point: {attachPoint}");
-        // --------------------------
-
-
-
+        segmentLength = ropeLength / numSegments;
         //for 30 points we need 31 positions (0-30)
         positions = new Vector3[numSegments + 1];
         previousPositions = new Vector3[numSegments + 1];
 
         //d = (End - Start) / ||End - Start||
+        Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
         Vector3 direction = (attachPoint - hangPoint.position).normalized;
         if (direction == Vector3.zero) direction = Vector3.down;
-
         //loop over all the points and set them in the initial position
         for (int i = 0; i <= numSegments; i++)
         {
             //P_i = Start + d * (i * L_segment)
             // If it's the last point, pin it to the top of the bucket!
-            positions[i] = hangPoint.position + direction * segmentLength * i;
+            if (i == numSegments)
+                positions[i] = attachPoint;
+            else
+                positions[i] = hangPoint.position + direction * segmentLength * i;
+
             previousPositions[i] = positions[i];
         }
+           
     }
 
 
