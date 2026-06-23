@@ -57,8 +57,8 @@ void SweptSpherePlaneCollision(inout float3 pos, inout float3 vel, float3 prevPo
             pos = contact + n * radius;
 
             hitUV = float2(
-                (u / canvasHalfSize.x + 1.0) * 0.5,
-                (v / canvasHalfSize.y + 1.0) * 0.5
+                1.0 -(u / canvasHalfSize.x + 1.0) * 0.5,
+                1.0 -(v / canvasHalfSize.y + 1.0) * 0.5
             );
             didHit = true;
         }
