@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 using Seb.GPUSorting;
 using Unity.Mathematics;
@@ -399,60 +399,136 @@ namespace Seb.Fluid.Simulation
 			compute.SetFloat("K_SpikyPow2Grad", spikyPow2Grad);
 			compute.SetFloat("K_SpikyPow3Grad", spikyPow3Grad);
 		}
+        public enum SurfaceType
+        {
+            Glass,
+            Wood,
+            Sponge,
+            Plastic
+        }
 
-		void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
-		{
-			if (smoothingRadius != smoothRadiusOld)
-			{
-				smoothRadiusOld = smoothingRadius;
-				UpdateSmoothingConstants();
-			}
+        public SurfaceType surfaceType;
 
-			Vector3 simBoundsSize = bucketTransform.localScale;
-			
+        Vector3 GetSurfaceParams()
+        {
+            switch (surfaceType)
+            {
+                case SurfaceType.Glass:
+                    return new Vector3(
+                        1.4f,   // bounce عالي
+                        0.02f,  // rough قليل
+                        0.0f    // لا امتصاص
+                    );
+
+                case SurfaceType.Wood:
+                    return new Vector3(
+                        0.55f,
+                        0.45f,
+                        0.1f
+                    );
+
+                case SurfaceType.Sponge:
+                    return new Vector3(
+                        0.15f,
+                        0.9f,
+                        1.0f
+                    );
+
+                case SurfaceType.Plastic:
+                    return new Vector3(
+                        0.95f,
+                        0.15f,
+                        0.0f
+                    );
+            }
+
+            return Vector3.zero;
+        }
+
+        void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
+        {
+            if (smoothingRadius != smoothRadiusOld)
+            {
+                smoothRadiusOld = smoothingRadius;
+                UpdateSmoothingConstants();
+            }
+
+            Vector3 simBoundsSize = bucketTransform.localScale;
             Vector3 simBoundsCentre = bucketTransform.position;
-			compute.SetFloat("deltaTime", stepDeltaTime);
-			compute.SetFloat("whiteParticleDeltaTime", frameDeltaTime);
-			compute.SetFloat("simTime", simTimer);
-			compute.SetFloat("gravity", gravity);
-			compute.SetFloat("collisionDamping", collisionDamping);
-			compute.SetFloat("smoothingRadius", smoothingRadius);
-			compute.SetFloat("targetDensity", targetDensity);
-			compute.SetFloat("pressureMultiplier", pressureMultiplier);
-			compute.SetFloat("nearPressureMultiplier", nearPressureMultiplier);
-			compute.SetFloat("viscosityStrength", viscosityStrength);
-			compute.SetVector("boundsSize", simBoundsSize);
-			compute.SetVector("centre", simBoundsCentre);
-			compute.SetFloat("holeSize", holeSize);
-			if (floorTransform != null)
-			{
-				
-					compute.SetFloat("sceneFloorY", floorTransform.position.y); 
-			}
 
-			compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
-			compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
-		
-            // CANVAS
-            canvasCollision.SetShaderParams(compute);
-            // UV
+            // =========================
+            // CORE SIM SETTINGS
+            // =========================
+            compute.SetFloat("deltaTime", stepDeltaTime);
+            compute.SetFloat("whiteParticleDeltaTime", frameDeltaTime);
+            compute.SetFloat("simTime", simTimer);
+
+            compute.SetFloat("gravity", gravity);
+            compute.SetFloat("collisionDamping", collisionDamping);
+
+            compute.SetFloat("smoothingRadius", smoothingRadius);
+            compute.SetFloat("targetDensity", targetDensity);
+            compute.SetFloat("pressureMultiplier", pressureMultiplier);
+            compute.SetFloat("nearPressureMultiplier", nearPressureMultiplier);
+            compute.SetFloat("viscosityStrength", viscosityStrength);
+
+            compute.SetVector("boundsSize", simBoundsSize);
+            compute.SetVector("centre", simBoundsCentre);
+            compute.SetFloat("holeSize", holeSize);
+
+            // =========================
+            // CANVAS (IMPORTANT FIX)
+            // =========================
+            if (canvasCollision != null)
+            {
+                canvasCollision.SetShaderParams(compute);
+            }
+
+            // =========================
+            // SURFACE RESPONSE (IMPORTANT PART)
+            // =========================
+            Vector3 surface = GetSurfaceParams();
+            // x = bounce
+            // y = rough
+            // z = absorb
+
+            compute.SetVector("surfaceParams", surface);
+            Debug.Log(surfaceType + " -> " + surface);
+            // =========================
+            // MATRIX TRANSFORMS
+            // =========================
+            compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
+            compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
+
+            // =========================
+            // PAINT TEXTURE
+            // =========================
             if (paintTexture != null)
                 compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+
             compute.SetVector("paintColour", paintColour);
 
+            // =========================
+            // FOAM SETTINGS
+            // =========================
+            float fadeInT = (spawnRateFadeInTime <= 0)
+                ? 1
+                : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
 
-            // Foam settings
-            float fadeInT = (spawnRateFadeInTime <= 0) ? 1 : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
-			compute.SetVector("trappedAirParams", new Vector3(trappedAirSpawnRate * fadeInT * fadeInT, trappedAirVelocityMinMax.x, trappedAirVelocityMinMax.y));
-			compute.SetVector("kineticEnergyParams", foamKineticEnergyMinMax);
-			compute.SetFloat("bubbleBuoyancy", bubbleBuoyancy);
-			compute.SetInt("sprayClassifyMaxNeighbours", sprayClassifyMaxNeighbours);
-			compute.SetInt("bubbleClassifyMinNeighbours", bubbleClassifyMinNeighbours);
-			compute.SetFloat("bubbleScaleChangeSpeed", bubbleChangeScaleSpeed);
-			compute.SetFloat("bubbleScale", bubbleScale);
-		}
+            compute.SetVector("trappedAirParams",
+                new Vector3(trappedAirSpawnRate * fadeInT * fadeInT,
+                trappedAirVelocityMinMax.x,
+                trappedAirVelocityMinMax.y));
 
-		void SetInitialBufferData(Spawner3D.SpawnData spawnData)
+            compute.SetVector("kineticEnergyParams", foamKineticEnergyMinMax);
+            compute.SetFloat("bubbleBuoyancy", bubbleBuoyancy);
+            compute.SetInt("sprayClassifyMaxNeighbours", sprayClassifyMaxNeighbours);
+            compute.SetInt("bubbleClassifyMinNeighbours", bubbleClassifyMinNeighbours);
+            compute.SetFloat("bubbleScaleChangeSpeed", bubbleChangeScaleSpeed);
+            compute.SetFloat("bubbleScale", bubbleScale);
+        }
+
+        void SetInitialBufferData(Spawner3D.SpawnData spawnData)
 		{
 			positionBuffer.SetData(spawnData.points);
 			predictedPositionsBuffer.SetData(spawnData.points);
@@ -517,6 +593,8 @@ namespace Seb.Fluid.Simulation
 			public float lifetime;
 			public float scale;
 		}
+
+
 
 		
 	}
