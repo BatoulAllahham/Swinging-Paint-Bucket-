@@ -39,6 +39,12 @@ namespace Seb.Fluid.Simulation
 		public Transform floorTransform; // This will hold the actual Floor object
 		[Range(0, 1)] public float collisionDamping = 0.95f;
 
+		[Header("Environmental Settings")]
+        [Range(-10f, 60f)] public float temperature = 25f;
+        [Range(0f, 1f)]    public float humidity = 0.5f;
+        [Range(0f, 0.1f)]  public float evaporationRate = 0.01f;
+        [Range(0.0f, 0.3f)]  public float viscosityBase = 0.05f;
+
 		[Header("Foam Settings")] public bool foamActive;
 		public int maxFoamParticleCount = 1000;
 		public float trappedAirSpawnRate = 70;
@@ -382,7 +388,7 @@ namespace Seb.Fluid.Simulation
 
 			Dispatch(compute, positionBuffer.count, kernelIndex: densityKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
-			if (viscosityStrength != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
+			if (viscosityBase != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: updatePositionsKernel);
 		}
 
@@ -481,6 +487,17 @@ namespace Seb.Fluid.Simulation
             compute.SetVector("boundsSize", simBoundsSize);
             compute.SetVector("centre", simBoundsCentre);
             compute.SetFloat("holeSize", holeSize);
+
+			//environmental settings
+			compute.SetFloat("temperature",              temperature);
+            compute.SetFloat("humidity",                 humidity);
+            compute.SetFloat("airDensity",               1.225f);
+            compute.SetFloat("airDragCoefficient",       0.47f);
+            compute.SetFloat("evaporationRate",          evaporationRate);
+            compute.SetFloat("viscosityBase",            viscosityBase);
+            compute.SetFloat("viscosityTempCoeff",       0.05f);
+            compute.SetFloat("surfaceTensionBase",       0.072f);
+            compute.SetFloat("surfaceTensionTempCoeff",  0.0001f);
 
             // =========================
             // CANVAS (IMPORTANT FIX)
