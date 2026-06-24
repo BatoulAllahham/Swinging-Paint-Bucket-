@@ -61,6 +61,9 @@ RWTexture2D<float4> PaintTexture;
 const int paintTextureSize;
 const float4 paintColour;
 
+// MIXING
+RWTexture2D<float4> PaintAccumTexture;
+
 const float2 interactionInputPoint;
 const float interactionInputStrength;
 const float interactionInputRadius;
@@ -524,7 +527,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     // 1. bucket / world collision
     ResolveCollisions(id.x, pos, vel, collisionDamping);
 
-    // 2. canvas collision
+    // CANVAS
     const float particleRadius = smoothingRadius * 0.5;
     const float canvasRestitution = 0.0;
     const float canvasTangentDamping = 0.3;
@@ -556,22 +559,22 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float3 normalVel = dot(vel, canvasNormal) * canvasNormal;
         float3 tangentVel = vel - normalVel;
 
-// bounce affects only vertical reflection
+        // bounce affects only vertical reflection
         normalVel = -normalVel * bounce;
 
-// roughness affects sliding/spread
+        // roughness affects sliding/spread
         tangentVel *= (1.0 - rough);
 
-// combine
+        // combine
         vel = normalVel + tangentVel;
 
-// absorption affects ONLY sponge-like surfaces strongly
+        // absorption affects ONLY sponge-like surfaces strongly
         float absorbFactor = absorb * deltaTime * 4.0;
         vel = lerp(vel, float3(0, 0, 0), absorbFactor);
 
         pos = prevPos;
 
-    // رسم البقعة
+        // رسم البقعة
         int2 coord = int2(
         (int) (hitUV.x * paintTextureSize),
         (int) (hitUV.y * paintTextureSize)
@@ -580,7 +583,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
        // حجم البقعة حسب السطح
         int radius = (int) lerp(2, 10, absorb + rough * 0.5);
 
-// كثافة اللون حسب الارتداد
+        // كثافة اللون حسب الارتداد
         float intensity = saturate(1.5 - bounce);
 
         for (int x = -radius; x <= radius; x++)
@@ -598,18 +601,37 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                     float dist = length(float2(x, y)) / (4.0 * spread);
                     float alpha = saturate(1.0 - dist) * absorbFade;
 
-            // الخشونة تكسر الحواف
+                    // الخشونة تكسر الحواف
                     alpha *= (1.0 - rough * dist);
 
-            // الارتداد يخفف أو يقوي اللون
+                    // الارتداد يخفف أو يقوي اللون
                     alpha *= intensity;
 
-                    float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
+                    //float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
 
-// الامتصاص التدريجي
-                    newPaint.rgb *= (1.0 - absorb * 0.03);
+                    // الامتصاص التدريجي
+                    //newPaint.rgb *= (1.0 - absorb * 0.03);
 
-                    PaintTexture[p] = newPaint;
+                    //PaintTexture[p] = newPaint;
+                    
+                    // MIXING
+                    float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
+
+                    float depositedMass = alpha;
+                    float4 accum = PaintAccumTexture[p];
+                    float oldMass = accum.a;
+                    float3 oldPigment = accum.rgb;
+
+                    float newMass = oldMass + depositedMass;
+                    float3 avgPigment = (oldMass * oldPigment + depositedMass * newPigment) / max(newMass, 0.001);
+
+                    PaintAccumTexture[p] = float4(avgPigment, newMass);
+
+                    // Convert back to RGB
+                    float3 displayColor = avgPigment * avgPigment;
+                    displayColor = clamp(displayColor, 0.0, 1.0);
+                    displayColor *= (1.0 - absorb * 0.03);
+                    PaintTexture[p] = float4(displayColor, 1.0);
                 }
             }
         }

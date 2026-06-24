@@ -24,7 +24,11 @@ namespace Seb.Fluid.Simulation
 		public Color paintColour = Color.blue; // colour this bucket's particles paint onto the canvas
 		RenderTexture paintTexture;
 
-		[Header("Time Step")] public float normalTimeScale = 1;
+        // MIXING
+        RenderTexture paintAccumTexture;
+        static RenderTexture sharedPaintAccumTexture; // shared across all buckets
+
+        [Header("Time Step")] public float normalTimeScale = 1;
 		public float slowTimeScale = 0.1f;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
 		public int iterationsPerFrame = 3;
@@ -309,6 +313,22 @@ namespace Seb.Fluid.Simulation
 
             compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
             compute.SetInt("paintTextureSize", paintTextureResolution);
+
+            // MIXING
+            // Share accum texture across all buckets (same logic as paintTexture)
+            if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
+            {
+                paintAccumTexture = sharedPaintAccumTexture;
+            }
+            else
+            {
+                paintAccumTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGBFloat);
+                paintAccumTexture.enableRandomWrite = true;
+                paintAccumTexture.Create();
+                sharedPaintAccumTexture = paintAccumTexture;
+            }
+
+            compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
         }
 
 		void Update()
@@ -482,9 +502,7 @@ namespace Seb.Fluid.Simulation
             compute.SetVector("centre", simBoundsCentre);
             compute.SetFloat("holeSize", holeSize);
 
-            // =========================
-            // CANVAS (IMPORTANT FIX)
-            // =========================
+            // CANVAS
             if (canvasCollision != null)
             {
                 canvasCollision.SetShaderParams(compute);
@@ -513,6 +531,10 @@ namespace Seb.Fluid.Simulation
                 compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
 
             compute.SetVector("paintColour", paintColour);
+
+            // MIXING
+            if (paintAccumTexture != null)
+                compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
 
             // =========================
             // FOAM SETTINGS
