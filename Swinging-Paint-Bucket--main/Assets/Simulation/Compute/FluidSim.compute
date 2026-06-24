@@ -50,6 +50,18 @@ const float4x4 localToWorld;
 const float4x4 worldToLocal;
 RWStructuredBuffer<int> ParticleStates; 
 
+
+// Environmental Properties 
+const float temperature;         
+const float humidity;             
+const float airDensity;           
+const float airDragCoefficient;   
+const float evaporationRate;      
+const float viscosityBase;       
+const float viscosityTempCoeff;   
+const float surfaceTensionBase;   
+const float surfaceTensionTempCoeff; 
+
 // CANVAS
 const float3 canvasCentre;
 const float3 canvasNormal;
@@ -181,15 +193,27 @@ if (posLocal.y >= ceilingY)
 [numthreads(ThreadGroupSize, 1, 1)]
 void ExternalForces(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= numParticles)
-        return;
+    if (id.x >= numParticles) return;
+    if (Positions[id.x].y < -500) return;
 
-    // Skip deposited particles
-    if (Positions[id.x].y < -500)
-        return;
-    Velocities[id.x] += float3(0, gravity, 0) * deltaTime;
+    float3 vel = Velocities[id.x];
 
-    PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * 1 / 120.0;
+    float3 gravityForce = float3(0, gravity, 0) * deltaTime;
+    vel += gravityForce;
+
+    float speed = length(vel);
+    if (speed > 0.001)
+    {
+        float dragMag = 0.5 * airDragCoefficient * airDensity
+                        * (smoothingRadius * smoothingRadius * 3.14159)
+                        * speed * speed;
+        float3 dragForce = -normalize(vel) * dragMag * deltaTime;
+        float newSpeed = max(0.0, speed - dragMag * deltaTime);
+        vel = normalize(vel) * newSpeed;
+    }
+
+    Velocities[id.x] = vel;
+    PredictedPositions[id.x] = Positions[id.x] + vel * (1.0 / 120.0);
 }
 
 [numthreads(ThreadGroupSize, 1, 1)]
@@ -507,7 +531,9 @@ void CalculateViscosity(uint3 id : SV_DispatchThreadID)
             viscosityForce += (neighbourVelocity - velocity) * SmoothingKernelPoly6(dst, smoothingRadius);
         }
     }
-    Velocities[id.x] += viscosityForce * viscosityStrength * deltaTime;
+    float effectiveViscosity = viscosityBase * exp(-viscosityTempCoeff * temperature);
+    effectiveViscosity = clamp(effectiveViscosity, 0.0, 0.3); 
+    Velocities[id.x] += viscosityForce * effectiveViscosity * deltaTime;
 }
 
 [numthreads(ThreadGroupSize, 1, 1)]
@@ -548,72 +574,67 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
     // 3. surface response (ONLY IF HIT)
     if (didHit)
-    {
-        float bounce = surfaceParams.x;
-        float rough = surfaceParams.y;
-        float absorb = surfaceParams.z;
+    {float bounce = surfaceParams.x;
+    float rough  = surfaceParams.y;
+    float absorb = surfaceParams.z;
 
-        float3 normalVel = dot(vel, canvasNormal) * canvasNormal;
-        float3 tangentVel = vel - normalVel;
+    float3 normalVel  = dot(vel, canvasNormal) * canvasNormal;
+    float3 tangentVel = vel - normalVel;
+    normalVel  = -normalVel * bounce;
+    tangentVel *= (1.0 - rough);
+    vel = normalVel + tangentVel;
+    float absorbFactor = absorb * deltaTime * 4.0;
+    vel = lerp(vel, float3(0,0,0), absorbFactor);
+    pos = prevPos;
 
-// bounce affects only vertical reflection
-        normalVel = -normalVel * bounce;
+    float effectiveSurfaceTension = max(0.01, surfaceTensionBase - surfaceTensionTempCoeff * temperature);
+    float tempSpreadFactor = 1.0 / max(0.1, effectiveSurfaceTension); 
+    float humiditySpreadBonus   = humidity * 0.5;           
+    float humidityOpacityFactor = 1.0 - humidity * 0.3;    
+    float C_surface = 1.0;
+    float C_ambient = humidity;
+    float evapFade  = evaporationRate * (C_surface - C_ambient) * deltaTime;
 
-// roughness affects sliding/spread
-        tangentVel *= (1.0 - rough);
-
-// combine
-        vel = normalVel + tangentVel;
-
-// absorption affects ONLY sponge-like surfaces strongly
-        float absorbFactor = absorb * deltaTime * 4.0;
-        vel = lerp(vel, float3(0, 0, 0), absorbFactor);
-
-        pos = prevPos;
-
-    // رسم البقعة
-        int2 coord = int2(
-        (int) (hitUV.x * paintTextureSize),
-        (int) (hitUV.y * paintTextureSize)
+    int2 coord = int2(
+        (int)(hitUV.x * paintTextureSize),
+        (int)(hitUV.y * paintTextureSize)
     );
 
-       // حجم البقعة حسب السطح
-        int radius = (int) lerp(2, 10, absorb + rough * 0.5);
+    int radius = (int)(lerp(2, 10, absorb + rough * 0.5)
+                 * tempSpreadFactor
+                 * (1.0 + humiditySpreadBonus));
+    radius = clamp(radius, 1, 20);
 
-// كثافة اللون حسب الارتداد
-        float intensity = saturate(1.5 - bounce);
+    float intensity = saturate(1.5 - bounce) * humidityOpacityFactor;
 
-        for (int x = -radius; x <= radius; x++)
+    for (int x = -radius; x <= radius; x++)
+    {
+        for (int y = -radius; y <= radius; y++)
         {
-            for (int y = -radius; y <= radius; y++)
-            {
-                int2 p = coord + int2(x, y);
+            int2 p = coord + int2(x, y);
+            if (p.x < 0 || p.x >= paintTextureSize ||
+                p.y < 0 || p.y >= paintTextureSize) continue;
 
-                if (p.x >= 0 && p.x < paintTextureSize &&
-            p.y >= 0 && p.y < paintTextureSize)
-                {
-                    float spread = lerp(0.5, 1.8, rough);
-                    float absorbFade = (1.0 - absorb * 0.5);
+            float spread    = lerp(0.5, 1.8, rough) * tempSpreadFactor;
+            float absorbFd  = (1.0 - absorb * 0.5);
 
-                    float dist = length(float2(x, y)) / (4.0 * spread);
-                    float alpha = saturate(1.0 - dist) * absorbFade;
+            float dist  = length(float2(x, y)) / (4.0 * spread);
+            float alpha = saturate(1.0 - dist) * absorbFd;
+            alpha *= (1.0 - rough * dist);
+            alpha *= intensity;
 
-            // الخشونة تكسر الحواف
-                    alpha *= (1.0 - rough * dist);
+            float edgeFactor = (temperature > 30.0) ? (dist * 0.3) : 0.0;
+            alpha = saturate(alpha + edgeFactor * 0.1);
 
-            // الارتداد يخفف أو يقوي اللون
-                    alpha *= intensity;
+            float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
 
-                    float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
+            newPaint.a  -= evapFade;
+            newPaint.rgb *= (1.0 - absorb * 0.03);
+            newPaint.a   = saturate(newPaint.a);
 
-// الامتصاص التدريجي
-                    newPaint.rgb *= (1.0 - absorb * 0.03);
-
-                    PaintTexture[p] = newPaint;
-                }
-            }
+            PaintTexture[p] = newPaint;
         }
-    }
+    }}
 
     // write back
     Positions[id.x] = pos;
