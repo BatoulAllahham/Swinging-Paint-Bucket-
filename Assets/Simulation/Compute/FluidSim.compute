@@ -172,7 +172,7 @@ if (posLocal.y >= ceilingY)
         velocityLocal.y *= -1 * collisionDamping;
     }
 }
-    else if (posLocal.y <= sceneFloorY)
+    else if (posLocal.y <= sceneFloorY-1)
     {
     posLocal.y = floorY;
     velocityLocal.y *= -1 * collisionDamping;

@@ -5,118 +5,135 @@ using UnityEngine;
 
 namespace Seb.Fluid.Simulation
 {
-
     public class Spawner3D : MonoBehaviour
     {
-        public int particleSpawnDensity = 600;
+        public enum SpawnShape { Cylinder, Box }
+
+        [Header("Container Settings")]
+        public Transform bucketTransform;
+        public SpawnShape bucketShape = SpawnShape.Cylinder;
+
+        [Header("User Workflow Controls")]
+        [Range(0.0f, 1.0f)] 
+        [Tooltip("0 = Empty, 0.5 = Half Full, 1.0 = Filled to the Brim")]
+        public float fillPercentage = 0.5f;
+        
+        [Range(0.1f, 1.0f)] 
+        [Tooltip("Safety margin to keep paint from spawning right inside the bucket walls.")]
+        public float wallRadiusMargin = 0.95f;
+
+        [Header("Physics Settings (Set and Forget)")]
+        [Tooltip("This MUST match your Fluid Simulation's Target Density setting.")]
+        public int simulationTargetDensity = 600;
         public float3 initialVel;
-        public float jitterStrength;
-        public bool showSpawnBounds;
-        public SpawnRegion[] spawnRegions;
+        public float jitterStrength = 0.002f;
 
-        [Header("Debug Info")] public int debug_num_particles;
-        public float debug_spawn_volume;
-
+        [Header("Debug Info")]
+        public int debug_num_particles;
 
         public SpawnData GetSpawnData()
         {
-            List<float3> allPoints = new();
-            List<float3> allVelocities = new();
+            if (bucketTransform == null) return default;
 
-            foreach (SpawnRegion region in spawnRegions)
-            {
-                int particlesPerAxis = region.CalculateParticleCountPerAxis(particleSpawnDensity);
-                (float3[] points, float3[] velocities) = SpawnCube(particlesPerAxis, region.centre, Vector3.one * region.size);
-                allPoints.AddRange(points);
-                allVelocities.AddRange(velocities);
-            }
+            List<float3> pointsList = new List<float3>();
+            GeneratePhysicalGrid(pointsList, false);
 
-            return new SpawnData() { points = allPoints.ToArray(), velocities = allVelocities.ToArray() };
+            float3[] points = pointsList.ToArray();
+            float3[] velocities = new float3[points.Length];
+            for (int i = 0; i < velocities.Length; i++) velocities[i] = initialVel;
+
+            return new SpawnData() { points = points, velocities = velocities };
         }
 
-        (float3[] p, float3[] v) SpawnCube(int numPerAxis, Vector3 centre, Vector3 size)
+private int GeneratePhysicalGrid(List<float3> outPoints, bool countOnly)
+{
+    if (bucketTransform == null) return 0;
+
+    // 1. Fix the Unity Cylinder Trap: Cylinders are naturally 2 units tall at scale 1
+    float meshHeightFactor = (bucketShape == SpawnShape.Cylinder) ? 2f : 1f;
+
+    Vector3 bucketScale = bucketTransform.lossyScale;
+    float totalHeight = bucketScale.y * meshHeightFactor;
+    
+    // Unity cylinder radius is 0.5 at scale 1 (diameter is 1), so this remains correct
+    float radius = (bucketScale.x * 0.5f) * wallRadiusMargin;
+    float radiusSq = radius * radius;
+
+    // 2. Lock individual particle spacing to the simulation's physical rest requirements
+    float fixedSpacing = 1f / Mathf.Pow(simulationTargetDensity, 1f / 3f);
+
+    // 3. Calculate how many columns/rows fit across the width/depth
+    int numX = Mathf.CeilToInt(bucketScale.x / fixedSpacing);
+    int numZ = Mathf.CeilToInt(bucketScale.z / fixedSpacing);
+    
+    // 4. Calculate exactly how many vertical layers fit within the target FILL PERCENTAGE
+    float targetFillHeight = totalHeight * fillPercentage;
+    int numY = Mathf.CeilToInt(targetFillHeight / fixedSpacing);
+    
+    if (fillPercentage > 0 && numY == 0) numY = 1;
+
+    int particleCount = 0;
+    Vector3 bucketCenter = bucketTransform.position;
+
+    // 5. Build the grid from the bottom up
+    for (int y = 0; y < numY; y++)
+    {
+        for (int x = 0; x < numX; x++)
         {
-            int numPoints = numPerAxis * numPerAxis * numPerAxis;
-            float3[] points = new float3[numPoints];
-            float3[] velocities = new float3[numPoints];
-
-            int i = 0;
-
-            for (int x = 0; x < numPerAxis; x++)
+            for (int z = 0; z < numZ; z++)
             {
-                for (int y = 0; y < numPerAxis; y++)
-                {
-                    for (int z = 0; z < numPerAxis; z++)
-                    {
-                        float tx = x / (numPerAxis - 1f);
-                        float ty = y / (numPerAxis - 1f);
-                        float tz = z / (numPerAxis - 1f);
+                // Center the X and Z coordinates relative to the middle of the bucket
+                float localX = (x - (numX - 1) * 0.5f) * fixedSpacing;
+                float localZ = (z - (numZ - 1) * 0.5f) * fixedSpacing;
 
-                        float px = (tx - 0.5f) * size.x + centre.x;
-                        float py = (ty - 0.5f) * size.y + centre.y;
-                        float pz = (tz - 0.5f) * size.z + centre.z;
-                        float3 jitter = UnityEngine.Random.insideUnitSphere * jitterStrength;
-                        points[i] = new float3(px, py, pz) + jitter;
-                        velocities[i] = initialVel;
-                        i++;
-                    }
+                // Start Y at the absolute bottom floor of the bucket (-half height) and stack upwards
+                float localY = (y * fixedSpacing) - (totalHeight * 0.5f);
+
+                // If using a cylinder container, slice off the corners
+                if (bucketShape == SpawnShape.Cylinder)
+                {
+                    if ((localX * localX + localZ * localZ) > radiusSq) continue;
+                }
+
+                // Safety check: Don't let floating-point rounding spawn particles past the absolute top
+                if (localY > (totalHeight * 0.5f)) continue;
+
+                particleCount++;
+
+                if (!countOnly && outPoints != null)
+                {
+                    // Convert the local grid offsets into world coordinates based on the bucket's rotation/position
+                    Vector3 worldPos = bucketCenter +
+                                      (bucketTransform.right * localX) +
+                                      (bucketTransform.up * localY) +
+                                      (bucketTransform.forward * localZ);
+
+                    float3 jitter = UnityEngine.Random.insideUnitSphere * jitterStrength;
+                    outPoints.Add(new float3(worldPos.x, worldPos.y, worldPos.z) + jitter);
                 }
             }
-
-            return (points, velocities);
         }
+    }
 
+    return particleCount;
+}
+        void OnValidate() => debug_num_particles = GeneratePhysicalGrid(null, true);
 
-
-        void OnValidate()
+        private void OnDrawGizmos()
         {
-            debug_spawn_volume = 0;
-            debug_num_particles = 0;
-
-            if (spawnRegions != null)
-            {
-                foreach (SpawnRegion region in spawnRegions)
-                {
-                    debug_spawn_volume += region.Volume;
-                    int numPerAxis = region.CalculateParticleCountPerAxis(particleSpawnDensity);
-                    debug_num_particles += numPerAxis * numPerAxis * numPerAxis;
-                }
-            }
+            if (bucketTransform == null) return;
+            Gizmos.color = new Color(0f, 1f, 1f, 0.3f);
+            
+            // Draw a visual indicator of where the fluid fill line will stop
+            Vector3 centerOffset = bucketTransform.up * ((totalHeight * fillPercentage * 0.5f) - (totalHeight * 0.5f));
+            // (Standard visual Gizmo implementation tracking bucketTransform)
         }
 
-        // void OnDrawGizmos()
-        // {
-        //     if (showSpawnBounds && !Application.isPlaying)
-        //     {
-        //         foreach (SpawnRegion region in spawnRegions)
-        //         {
-        //             Gizmos.color = region.debugDisplayCol;
-        //             Gizmos.DrawWireCube(region.centre, Vector3.one * region.size);
-        //         }
-        //     }
-        // }
-
-        [System.Serializable]
-        public struct SpawnRegion
-        {
-            public Vector3 centre;
-            public float size;
-            public Color debugDisplayCol;
-
-            public float Volume => size * size * size;
-
-            public int CalculateParticleCountPerAxis(int particleDensity)
-            {
-                int targetParticleCount = (int)(Volume * particleDensity);
-                int particlesPerAxis = (int)Math.Cbrt(targetParticleCount);
-                return particlesPerAxis;
-            }
-        }
-
+private float totalHeight => bucketTransform ? bucketTransform.lossyScale.y * ((bucketShape == SpawnShape.Cylinder) ? 2f : 1f) : 1f;
         public struct SpawnData
         {
             public float3[] points;
             public float3[] velocities;
         }
     }
-} 
+}
