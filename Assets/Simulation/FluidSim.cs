@@ -402,10 +402,9 @@ namespace Seb.Fluid.Simulation
         public enum SurfaceType
         {
             Glass,
-            Plastic,
-            Sponge,
             Wood,
-            Canvas
+            Sponge,
+            Plastic
         }
 
         public SurfaceType surfaceType;
@@ -441,11 +440,6 @@ namespace Seb.Fluid.Simulation
                         0.15f,
                         0.0f
                     );
-
-                case SurfaceType.Canvas:
-                    return new Vector3(0.35f, 0.65f, 0.45f);
-                    
-
             }
 
             return Vector3.zero;

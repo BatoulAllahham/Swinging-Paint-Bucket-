@@ -566,8 +566,10 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         vel = normalVel + tangentVel;
 
 // absorption affects ONLY sponge-like surfaces strongly
-        float absorbFactor = absorb * deltaTime * 4.0;
-        vel = lerp(vel, float3(0, 0, 0), absorbFactor);
+        if (absorb > 0.5)
+        {
+            vel *= (1.0 - absorb);
+        }
 
         pos = prevPos;
 
@@ -592,24 +594,21 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 if (p.x >= 0 && p.x < paintTextureSize &&
             p.y >= 0 && p.y < paintTextureSize)
                 {
-                    float spread = lerp(0.5, 1.8, rough);
-                    float absorbFade = (1.0 - absorb * 0.5);
+                    float d = length(float2(x, y)) / radius;
 
-                    float dist = length(float2(x, y)) / (4.0 * spread);
-                    float alpha = saturate(1.0 - dist) * absorbFade;
+                    float alpha = saturate(1.0 - d);
 
             // الخشونة تكسر الحواف
-                    alpha *= (1.0 - rough * dist);
+                    alpha *= (1.0 - rough * d);
 
             // الارتداد يخفف أو يقوي اللون
                     alpha *= intensity;
 
-                    float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
-
-// الامتصاص التدريجي
-                    newPaint.rgb *= (1.0 - absorb * 0.03);
-
-                    PaintTexture[p] = newPaint;
+                    PaintTexture[p] = lerp(
+                PaintTexture[p],
+                paintColour,
+                alpha
+            );
                 }
             }
         }
