@@ -3,6 +3,9 @@ using UnityEngine;
 
 public class Rope : MonoBehaviour
 {
+    public float ropeLength = 8.0f; // the total L
+    public float RopeLength => ropeLength;
+
     [Header("References")]
     [SerializeField] Transform hangPoint;
     [SerializeField] Transform bucket;
@@ -10,7 +13,6 @@ public class Rope : MonoBehaviour
 
     [Header("Rope Settings")]
     [SerializeField] int numSegments = 30; //how many pieces we brake the rope into
-    [SerializeField] float ropeLength = 10.0f; // the total L
     [SerializeField] float ropeRadius = 0.05f;
     [SerializeField] int radialSegments = 8; //in one ring, how many vertices we have
 
