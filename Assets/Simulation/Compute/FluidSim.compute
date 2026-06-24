@@ -521,10 +521,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
     float3 vel = Velocities[id.x];
     float3 prevPos = Positions[id.x];
-
     float3 pos = prevPos + vel * deltaTime;
 
-    // 1. bucket / world collision
     ResolveCollisions(id.x, pos, vel, collisionDamping);
 
     // CANVAS
@@ -549,95 +547,243 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         didHit
     );
 
-    // 3. surface response (ONLY IF HIT)
     if (didHit)
     {
         float bounce = surfaceParams.x;
         float rough = surfaceParams.y;
         float absorb = surfaceParams.z;
 
-        float3 normalVel = dot(vel, canvasNormal) * canvasNormal;
-        float3 tangentVel = vel - normalVel;
+        
+        float woodMask = saturate((absorb - 0.3) / 0.4);
+        float glassMask = saturate(1.0 - woodMask);
+        float3 normal = canvasNormal;
 
-        // bounce affects only vertical reflection
-        normalVel = -normalVel * bounce;
+        float3 vN = dot(vel, normal) * normal;
+        float3 vT = vel - vN;
 
-        // roughness affects sliding/spread
-        tangentVel *= (1.0 - rough);
+        // wood pre-pass: burst + rapid friction
+        if (woodMask > 0.2)
+        {
+            float speed = length(vT);
+            float3 dir = (speed > 0.0001) ? (vT / speed) : 0;
+            float burst = speed * 0.6;
+            vT = dir * burst;
+            vT *= exp(-rough * 20.0);
+        }
 
-        // combine
-        vel = normalVel + tangentVel;
+        float3 motionForPaint = vel;
+        float motionSpeed = length(motionForPaint);
 
-        // absorption affects ONLY sponge-like surfaces strongly
-        float absorbFactor = absorb * deltaTime * 4.0;
-        vel = lerp(vel, float3(0, 0, 0), absorbFactor);
+        // normal response
+        if (absorb > 0.8)
+            vN = float3(0, 0, 0);
+        else
+            vN = -vN * bounce;
 
-        pos = prevPos;
+        // gravity slide
+        float3 gravityDir = float3(0, -gravity, 0);
+        float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
+        float slideStrength = length(slideDir);
+        if (slideStrength > 0.0001)
+            slideDir /= slideStrength;
 
-        // رسم البقعة
+        float slip = (1.0 - rough) * pow((1.0 - absorb), 4.0);
+
+        if (absorb < 0.8)
+        {
+            if (woodMask < 0.2)
+                vT += slideDir * slideStrength * slip * deltaTime * 6.0;
+            else
+            {
+                float speed = length(vT);
+                float3 dir = (speed > 0.0001) ? vT / speed : 0;
+                float burst = speed * 0.4;
+                vT = dir * burst;
+                vT *= exp(-rough * 18.0);
+            }
+        }
+        else
+        {
+            vT = float3(0, 0, 0);
+        }
+
+        float friction = rough + absorb * 3.0;
+        vT *= max(0.0, 1.0 - friction * deltaTime);
+
+        vT *= (1.0 - rough * absorb) * (1.0 - woodMask * 0.9);
+        vel = vN + vT;
+
+
+        float normalVel = dot(vel, normal);
+        float tangentSpeed = length(vT);
+
+// كم الجزيء "مضغوط" داخل السطح أو يحاول يطلع منه
+        float penetrationBias = abs(normalVel);
+
+// الميل الحقيقي للسطح بالنسبة للجاذبية
+        float upDot = dot(normal, float3(0, 1, 0));
+        float flatness = abs(upDot);
+        float gravityAlignment = abs(dot(normal, float3(0, -1, 0)));
+
+
+        float stickThreshold = lerp(0.003, 0.03, gravityAlignment);
+
+// إذا الحركة ضعيفة + ليس هناك ضغط عمودي قوي
+        // =======================
+// FIX STABILITY (NO FLICKER)
+// =======================
+
+// projection only ONCE
+        float3 targetPos = prevPos;
+        targetPos += normal * (particleRadius * 0.5);
+
+// stability test
+        float speedCheck = length(vT);
+        float normalPush = abs(dot(vel, normal));
+
+// threshold adaptive
+       
+        float threshold = lerp(0.01, 0.04, flatness);
+
+// إذا الجزيء شبه ساكن → نثبته مباشرة على السطح
+        if (speedCheck < threshold && normalPush < 0.015)
+        {
+            pos = targetPos;
+            vel = float3(0, 0, 0);
+            vT = float3(0, 0, 0);
+        }
+        else
+        {
+    // مهم: لا تعمل أي correction إضافي هنا
+            pos = targetPos;
+        }
+
+        vT *= saturate(1.0 - woodMask * 0.9);
+
+        float absorbFactor = absorb * deltaTime * 8.0;
+        if (absorb > 0.8)
+            absorbFactor *= 3.0;
+        vel *= max(0.0, 1.0 - absorbFactor);
+
+        if (absorb < 0.8)
+            pos += vT * deltaTime;
+
         int2 coord = int2(
-        (int) (hitUV.x * paintTextureSize),
-        (int) (hitUV.y * paintTextureSize)
-    );
+            (int) (hitUV.x * paintTextureSize),
+            (int) (hitUV.y * paintTextureSize)
+        );
 
-       // حجم البقعة حسب السطح
+        if (absorb > 0.8)
+        {
+            pos = prevPos;
+            vel = float3(0, 0, 0);
+        }
+
+        // streak calculation 
         int radius = (int) lerp(2, 10, absorb + rough * 0.5);
+        float paintSpeed = length(vT);
 
-        // كثافة اللون حسب الارتداد
-        float intensity = saturate(1.5 - bounce);
+        float streak;
+        if (woodMask < 0.2)
+        {
+            streak = paintSpeed * 4.0 * glassMask;
+        }
+        else
+        {
+            streak = paintSpeed * 0.6;
+            streak *= exp(-rough * 20.0);
+            streak = min(streak, 0.12);
+        }
+        streak = saturate(streak);
 
+        //  paint loop:  shape logic + KM mixing
         for (int x = -radius; x <= radius; x++)
         {
             for (int y = -radius; y <= radius; y++)
             {
-                int2 p = coord + int2(x, y);
+                int2 p;
 
-                if (p.x >= 0 && p.x < paintTextureSize &&
-            p.y >= 0 && p.y < paintTextureSize)
+                if (absorb < 0.7)
                 {
-                    float spread = lerp(0.5, 1.8, rough);
-                    float absorbFade = (1.0 - absorb * 0.5);
-
-                    float dist = length(float2(x, y)) / (4.0 * spread);
-                    float alpha = saturate(1.0 - dist) * absorbFade;
-
-                    // الخشونة تكسر الحواف
-                    alpha *= (1.0 - rough * dist);
-
-                    // الارتداد يخفف أو يقوي اللون
-                    alpha *= intensity;
-
-                    //float4 newPaint = lerp(PaintTexture[p], paintColour, alpha);
-
-                    // الامتصاص التدريجي
-                    //newPaint.rgb *= (1.0 - absorb * 0.03);
-
-                    //PaintTexture[p] = newPaint;
-                    
-                    // MIXING
-                    float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
-
-                    float depositedMass = alpha;
-                    float4 accum = PaintAccumTexture[p];
-                    float oldMass = accum.a;
-                    float3 oldPigment = accum.rgb;
-
-                    float newMass = oldMass + depositedMass;
-                    float3 avgPigment = (oldMass * oldPigment + depositedMass * newPigment) / max(newMass, 0.001);
-
-                    PaintAccumTexture[p] = float4(avgPigment, newMass);
-
-                    // Convert back to RGB
-                    float3 displayColor = avgPigment * avgPigment;
-                    displayColor = clamp(displayColor, 0.0, 1.0);
-                    displayColor *= (1.0 - absorb * 0.03);
-                    PaintTexture[p] = float4(displayColor, 1.0);
+                    float2 dir2 = float2(0, 0);
+                    if (woodMask < 0.2)
+                    {
+                        if (motionSpeed > 0.0001)
+                            dir2 = motionForPaint.xy / motionSpeed;
+                        streak = saturate(motionSpeed * 4.0) * 0.25;
+                    }
+                    else
+                    {
+                        float burst = motionSpeed * 0.6;
+                        burst *= exp(-rough * 12.0);
+                        streak = saturate(burst);
+                        streak = min(streak, 0.12);
+                    }
+                    // streaked offset along motion direction
+                    p = coord + int2(x, y) + int2(
+                        (int) (dir2.x * streak * radius),
+                        (int) (dir2.y * streak * radius)
+                    );
                 }
+                else
+                {
+                    p = coord + int2(x, y);
+                }
+
+                if (p.x < 0 || p.x >= paintTextureSize ||
+                    p.y < 0 || p.y >= paintTextureSize)
+                    continue;
+
+
+                float dist, alpha;
+                float distF = length(float2(x, y)) / max(radius, 1);
+
+                if (absorb > 0.8)
+                {
+                    float absorbFalloff = pow(saturate(1.0 - distF), 2.5);
+                    alpha = absorbFalloff;
+                }
+                else
+                {
+                    alpha = saturate(1.0 - distF);
+                    alpha *= (1.0 - rough * distF);
+                    alpha *= (1.0 - absorb * 0.5);
+                }
+
+                // MIXING
+                float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
+                float depositedMass = alpha;
+
+                float4 accum = PaintAccumTexture[p];
+                float oldMass = accum.a;
+                float3 oldPigment = accum.rgb;
+
+                float newMass = oldMass + depositedMass;
+                float3 avgPigment = (oldMass * oldPigment + depositedMass * newPigment)
+                                  / max(newMass, 0.001);
+
+                PaintAccumTexture[p] = float4(avgPigment, newMass);
+
+                float spongeMask = saturate((absorb - 0.6) / 0.3);
+
+
+                float3 color = avgPigment * avgPigment;
+
+
+                float luminance = dot(color, float3(0.299, 0.587, 0.114));
+                float3 spongeColor = lerp(color, luminance.xxx, 0.30);
+
+
+                float3 displayColor = lerp(color, spongeColor, spongeMask);
+
+                displayColor = clamp(displayColor, 0.0, 1.0);
+                displayColor *= (1.0 - absorb * 0.03);
+
+                PaintTexture[p] = float4(displayColor, 1.0);
             }
         }
     }
 
-    // write back
     Positions[id.x] = pos;
     Velocities[id.x] = vel;
 }
