@@ -14,6 +14,7 @@
 #include "./FluidMaths3D.hlsl"
 #include "./SpatialHash3D.hlsl"
 #include "./CanvasCollision.hlsl"
+#include "./PaintMixing.hlsl"
 
 static const int ThreadGroupSize = 256;
 
