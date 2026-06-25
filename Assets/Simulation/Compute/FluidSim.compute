@@ -14,7 +14,6 @@
 #include "./FluidMaths3D.hlsl"
 #include "./SpatialHash3D.hlsl"
 #include "./CanvasCollision.hlsl"
-#include "./PaintMixing.hlsl"
 
 static const int ThreadGroupSize = 256;
 
@@ -767,14 +766,14 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
                 float spongeMask = saturate((absorb - 0.6) / 0.3);
 
-// اللون الأساسي
+
                 float3 color = avgPigment * avgPigment;
 
-// تحويله للرمادي (لإسفنج)
+
                 float luminance = dot(color, float3(0.299, 0.587, 0.114));
                 float3 spongeColor = lerp(color, luminance.xxx, 0.65);
 
-// دمج الإسفنج مع القماش
+
                 float3 displayColor = lerp(color, spongeColor, spongeMask);
 
                 displayColor = clamp(displayColor, 0.0, 1.0);
