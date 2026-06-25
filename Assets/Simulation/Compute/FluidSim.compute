@@ -613,6 +613,52 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         vT *= (1.0 - rough * absorb) * (1.0 - woodMask * 0.9);
         vel = vN + vT;
+
+
+        float normalVel = dot(vel, normal);
+        float tangentSpeed = length(vT);
+
+// كم الجزيء "مضغوط" داخل السطح أو يحاول يطلع منه
+        float penetrationBias = abs(normalVel);
+
+// الميل الحقيقي للسطح بالنسبة للجاذبية
+        float upDot = dot(normal, float3(0, 1, 0));
+        float flatness = abs(upDot);
+        float gravityAlignment = abs(dot(normal, float3(0, -1, 0)));
+
+
+        float stickThreshold = lerp(0.003, 0.03, gravityAlignment);
+
+// إذا الحركة ضعيفة + ليس هناك ضغط عمودي قوي
+        // =======================
+// FIX STABILITY (NO FLICKER)
+// =======================
+
+// projection only ONCE
+        float3 targetPos = prevPos;
+        targetPos += normal * (particleRadius * 0.5);
+
+// stability test
+        float speedCheck = length(vT);
+        float normalPush = abs(dot(vel, normal));
+
+// threshold adaptive
+       
+        float threshold = lerp(0.01, 0.04, flatness);
+
+// إذا الجزيء شبه ساكن → نثبته مباشرة على السطح
+        if (speedCheck < threshold && normalPush < 0.015)
+        {
+            pos = targetPos;
+            vel = float3(0, 0, 0);
+            vT = float3(0, 0, 0);
+        }
+        else
+        {
+    // مهم: لا تعمل أي correction إضافي هنا
+            pos = targetPos;
+        }
+
         vT *= saturate(1.0 - woodMask * 0.9);
 
         float absorbFactor = absorb * deltaTime * 8.0;
@@ -719,9 +765,21 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
                 PaintAccumTexture[p] = float4(avgPigment, newMass);
 
-                float3 displayColor = avgPigment * avgPigment;
+                float spongeMask = saturate((absorb - 0.6) / 0.3);
+
+// اللون الأساسي
+                float3 color = avgPigment * avgPigment;
+
+// تحويله للرمادي (لإسفنج)
+                float luminance = dot(color, float3(0.299, 0.587, 0.114));
+                float3 spongeColor = lerp(color, luminance.xxx, 0.65);
+
+// دمج الإسفنج مع القماش
+                float3 displayColor = lerp(color, spongeColor, spongeMask);
+
                 displayColor = clamp(displayColor, 0.0, 1.0);
                 displayColor *= (1.0 - absorb * 0.03);
+
                 PaintTexture[p] = float4(displayColor, 1.0);
             }
         }
