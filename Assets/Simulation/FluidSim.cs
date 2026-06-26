@@ -237,8 +237,9 @@ namespace Seb.Fluid.Simulation
 				densityBuffer,
 				velocityBuffer,
 				spatialHash.SpatialKeys,
-				spatialHash.SpatialOffsets
-			});
+				spatialHash.SpatialOffsets,
+                stateBuffer
+            });
 
 			// Update positions kernel
 			SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
@@ -348,7 +349,8 @@ namespace Seb.Fluid.Simulation
 			}
 
 			HandleInput();
-		}
+            Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
+        }
 
 		void RunSimulationFrame(float frameDeltaTime)
 		{
@@ -471,6 +473,98 @@ namespace Seb.Fluid.Simulation
             return Vector3.zero;
         }
 
+		// PAINT TYPE
+        public enum PaintType { Watercolor, Acrylic, WallPaint }
+
+        [Header("Paint Type")]
+        public PaintType paintType = PaintType.Watercolor;
+
+        void SetPaintTypeParams()
+        {
+            float paintViscosity, paintDensityFactor, mixRate;
+
+            switch (paintType)
+            {
+                case PaintType.Watercolor:
+                    paintViscosity = 0.0f;
+                    paintDensityFactor = 0.0f;
+                    mixRate = 1.0f;
+                    break;
+                case PaintType.Acrylic:
+                    paintViscosity = 0.4f;
+                    paintDensityFactor = 0.5f;
+                    mixRate = 0.4f;
+                    break;
+                case PaintType.WallPaint:
+                    paintViscosity = 1.0f;
+                    paintDensityFactor = 1.0f;
+                    mixRate = 0.0f;
+                    break;
+                default:
+                    paintViscosity = 0.0f;
+                    paintDensityFactor = 0.0f;
+                    mixRate = 1.0f;
+                    break;
+            }
+
+            compute.SetFloat("paintViscosity", paintViscosity);
+            compute.SetFloat("paintDensityFactor", paintDensityFactor);
+            compute.SetFloat("paintMixRate", mixRate);
+
+            float flowRate;
+            switch (paintType)
+            {
+                case PaintType.Watercolor: 
+					flowRate = 1.0f; 
+					break; // flows freely
+                case PaintType.Acrylic: 
+					flowRate = 0.3f;
+					break; // flows slowly  
+                case PaintType.WallPaint: 
+					flowRate = 0.05f; 
+					break; // barely flows
+                default: 
+					flowRate = 1.0f; 
+					break;
+            }
+
+            compute.SetFloat("paintFlowRate", flowRate);
+
+
+            // How fast paint gets absorbed INTO the surface (separate from surface absorb param)
+            // High = paint disappears quickly into surface
+            // Low = paint sits on surface
+            float paintAbsorptionResistance;
+
+            // How much paint spreads on contact
+            float paintSpread;
+
+            switch (paintType)
+            {
+                case PaintType.Watercolor:
+                    paintAbsorptionResistance = 0.0f; // absorbed easily
+                    paintSpread = 1.0f;               // spreads wide
+                    break;
+                case PaintType.Acrylic:
+                    paintAbsorptionResistance = 0.5f; // partially resists
+                    paintSpread = 0.6f;               // medium spread
+                    break;
+                case PaintType.WallPaint:
+                    paintAbsorptionResistance = 0.9f; // resists absorption
+                    paintSpread = 0.3f;               // tight deposit
+                    break;
+                default:
+                    paintAbsorptionResistance = 0.0f;
+                    paintSpread = 1.0f;
+                    break;
+            }
+
+            compute.SetFloat("paintAbsorptionResistance", paintAbsorptionResistance);
+            compute.SetFloat("paintSpread", paintSpread);
+
+           
+        }
+
         void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
         {
             if (smoothingRadius != smoothRadiusOld)
@@ -531,6 +625,9 @@ namespace Seb.Fluid.Simulation
                 compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
 
             compute.SetVector("paintColour", paintColour);
+
+            // PAINT TYPE
+            SetPaintTypeParams();
 
             // MIXING
             if (paintAccumTexture != null)
