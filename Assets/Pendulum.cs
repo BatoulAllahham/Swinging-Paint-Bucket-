@@ -257,6 +257,7 @@ public class Pendulum : MonoBehaviour
 
     private void FixedUpdate()
     {
+        ropeLength = ropeComponent.RopeLength;
         if (!isDragging)
         {
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);
@@ -277,6 +278,13 @@ public class Pendulum : MonoBehaviour
             Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
             Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
             transform.rotation = Orientation * correction;
+
+
+            //transform.up = (hangPoint.position - transform.position).normalized;
+
+            //transform.rotation = Quaternion.identity;
+
+
 
         }
         //UpdateRope();
@@ -301,6 +309,15 @@ public class Pendulum : MonoBehaviour
 
         return new Vector3(vx, vy, vz);
     }
+
+
+
+    //last solution for the rotation of the bucket : 
+    //private Quaternion initialRotation;
+    //in the start method : initialRotation = transform.rotation;
+    //in fixedUpdate :
+    //Vector3 ropeDirection = (hangPoint.position - transform.position).normalized;
+    //transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection)* initialRotation;
 
 
 

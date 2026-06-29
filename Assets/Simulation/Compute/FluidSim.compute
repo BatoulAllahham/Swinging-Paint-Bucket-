@@ -48,7 +48,7 @@ const float3 boundsSize;
 
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
-RWStructuredBuffer<int> ParticleStates; 
+RWStructuredBuffer<int> ParticleStates;
 
 // CANVAS
 const float3 canvasCentre;
@@ -60,9 +60,18 @@ const float2 canvasHalfSize;
 RWTexture2D<float4> PaintTexture;
 const int paintTextureSize;
 const float4 paintColour;
+// PAINT TYPE
+const float paintViscosity;
+const float paintDensityFactor;
+const float paintMixRate;
 
 // MIXING
 RWTexture2D<float4> PaintAccumTexture;
+
+// PAINT TYPE
+const float paintFlowRate;
+const float paintAbsorptionResistance;
+const float paintSpread;
 
 const float2 interactionInputPoint;
 const float interactionInputStrength;
@@ -126,9 +135,9 @@ float Remap01(float val, float minVal, float maxVal)
 void ResolveCollisions(uint particleID, inout float3 pos, inout float3 vel, float collisionDamping)
 {
     // Skip already processed particles
-    if (ParticleStates[particleID] == 1) 
+    if (ParticleStates[particleID] == 1 || ParticleStates[particleID] == 2)
     {
-        return; 
+        return;
     }
     
     float3 posLocal = mul(worldToLocal, float4(pos, 1)).xyz;
@@ -398,18 +407,21 @@ void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
             currIndex++;
 
             // Skip if looking at self
-            if (neighbourIndex == id.x) continue;
+            if (neighbourIndex == id.x)
+                continue;
 
             uint neighbourKey = SpatialKeys[neighbourIndex];
             // Exit if no longer looking at correct bin
-            if (neighbourKey != key) break;
+            if (neighbourKey != key)
+                break;
 
             float3 neighbourPos = PredictedPositions[neighbourIndex];
             float3 offsetToNeighbour = neighbourPos - pos;
             float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
 
             // Skip if not within radius
-            if (sqrDstToNeighbour > sqrRadius) continue;
+            if (sqrDstToNeighbour > sqrRadius)
+                continue;
 
             // Calculate pressure force
             float densityNeighbour = Densities[neighbourIndex][0];
@@ -454,7 +466,8 @@ void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
 
     // ---- Handle spawning of white particles from the current fluid particle ----
     uint rngState = dot(asuint(float4(pos, simTime)), uint4(19349669, 83492837, 73856131, 4785773));
-    if (id.x == 0) WhiteParticleCounters[1] = 0; // Reset survivor counter
+    if (id.x == 0)
+        WhiteParticleCounters[1] = 0; // Reset survivor counter
 
     float trappedAirFactor = trappedAirParams[0] * Remap01(weightedVelocityDifference, trappedAirParams[1], trappedAirParams[2]);
     float kineticEnergyFactor = Remap01(dot(velocity, velocity), kineticEnergyParams[0], kineticEnergyParams[1]);
@@ -464,7 +477,8 @@ void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
     // then we will spawn at least 3 particles, with a 70% chance of spawning a 4th particle
     int particleSpawnCount = floor(particleSpawnFactor);
     float fractionalSpawnRemainder = particleSpawnFactor - particleSpawnCount;
-    if (RandomValue(rngState) < fractionalSpawnRemainder) particleSpawnCount += 1;
+    if (RandomValue(rngState) < fractionalSpawnRemainder)
+        particleSpawnCount += 1;
 
     //uint targ = NextRandom(rngState) % 4096;
 
@@ -473,7 +487,7 @@ void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
     if (particleSpawnCount > 0)
     {
         uint particleIndex;
-        InterlockedAdd(WhiteParticleCounters[0], (uint)particleSpawnCount, particleIndex);
+        InterlockedAdd(WhiteParticleCounters[0], (uint) particleSpawnCount, particleIndex);
         particleSpawnCount = min(particleSpawnCount, MaxWhiteParticleCount - particleIndex - 1);
 
         float3 cylinderBase = pos;
@@ -572,6 +586,130 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     const float particleRadius = smoothingRadius * 0.5;
     const float canvasRestitution = 0.0;
     const float canvasTangentDamping = 0.3;
+    
+    if (ParticleStates[id.x] == 2)
+    {
+        float3 n = normalize(canvasNormal);
+
+        float absorb = surfaceParams.z;
+        float rough = surfaceParams.y;
+        float flatness = abs(dot(n, float3(0, 1, 0)));
+
+    // Project back onto surface
+        float dist = dot(pos - canvasCentre, n);
+        pos = pos - n * (dist - particleRadius);
+
+ 
+    // glass(absorb=0) + anything       → 0.0  never absorbed
+    // sponge(absorb=1) + watercolor(resistance=0)  → 1.0  stops instantly  
+    // sponge(absorb=1) + wallpaint(resistance=0.9) → 0.1  slides a little
+        float effectiveAbsorb = saturate(absorb * (1.0 - paintAbsorptionResistance));
+
+    // Viscous drag: high viscosity paint resists moving regardless of surface
+        float viscousDrag = 1.0 - paintFlowRate;
+
+        // Friction kills velocity each frame
+        // Surface roughness + absorption (absorbed paint cant slide) + viscosity
+        float friction = rough * 2.0 + effectiveAbsorb * 6.0 + viscousDrag * 3.0;
+        vel *= max(0.0, 1.0 - friction * deltaTime);
+
+        float3 worldGravity = float3(0, -gravity, 0);
+
+// إسقاط الجاذبية على سطح اللوحة
+        float3 slideForce = worldGravity - n * dot(worldGravity, n);
+
+// مقدار الميل الحقيقي بغض النظر عن الاتجاه
+        float slideStrength = length(slideForce);
+
+// هل يوجد ميل فعلي؟
+        bool canSlide = (slideStrength > 0.01) && (effectiveAbsorb < 0.98);
+
+        if (canSlide)
+        {
+            if (slideStrength > 0.00001)
+            {
+                slideForce /= slideStrength;
+            }
+
+        // Gravity pulls paint down; viscosity resists
+        // wallpaint: 0.05 * (1-0) = 0.05 small but nonzero on glass
+        // watercolor on canvas: 1.0 * (1-0.45*0.9) = 0.595 moderate
+            float slideAccel = paintFlowRate * (1.0 - effectiveAbsorb * 0.8);
+            vel += slideForce * slideStrength * slideAccel * deltaTime;
+
+        // Terminal speed from physics: v ∝ flowRate / (1 + viscosity + absorption)
+            float maxSpeed = paintFlowRate / (1.0 + viscousDrag * 4.0 + effectiveAbsorb * 3.0) * 0.4;
+            float spd = length(vel);
+            if (spd > maxSpeed)
+                vel = vel / spd * maxSpeed;
+        }
+        else
+            vel = float3(0, 0, 0);
+
+        // remove when fully stopped
+        if (length(vel) < 0.002)
+        {
+            pos = float3(0, -1000, 0);
+            vel = float3(0, 0, 0);
+            Positions[id.x] = pos;
+            Velocities[id.x] = vel;
+            return;
+        }
+
+        // trail paint while sliding
+        float u = dot(pos - canvasCentre, canvasRight);
+        float v = dot(pos - canvasCentre, canvasUp);
+
+        if (abs(u) <= canvasHalfSize.x && abs(v) <= canvasHalfSize.y)
+        {
+            float uvX = 1.0 - (u / canvasHalfSize.x + 1.0) * 0.5;
+            float uvY = 1.0 - (v / canvasHalfSize.y + 1.0) * 0.5;
+            int2 coord = int2((int) (uvX * paintTextureSize), (int) (uvY * paintTextureSize));
+
+            // Trail radius: small for viscous/absorbed, larger for watery
+            //int radius = max(1, (int) (lerp(1, 5, paintFlowRate) * paintSpread));
+            //int radius = max(2, (int) (lerp(3, 5, 1.0 - paintFlowRate) * paintSpread * lerp(2.0, 1.0, paintFlowRate)));
+            int radius = max(2, (int) lerp(4, 2, paintFlowRate));
+            
+            // Trail alpha: weaker for absorbed paint, stronger for flowing
+            //float trailAlpha = slideSpeed * (1.0 - effectiveAbsorb) * 0.15;
+            float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
+
+            float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
+
+            for (int sx = -radius; sx <= radius; sx++)
+                for (int sy = -radius; sy <= radius; sy++)
+                {
+                    int2 p = coord + int2(sx, sy);
+                    if (p.x < 0 || p.x >= paintTextureSize || p.y < 0 || p.y >= paintTextureSize)
+                        continue;
+
+                    float distF = length(float2(sx, sy)) / max(radius, 1);
+                    float alpha = saturate(1.0 - distF) * trailAlpha;
+                    if (alpha < 0.001)
+                        continue;
+
+                    float4 accum = PaintAccumTexture[p];
+                    float newMass = accum.a + alpha;
+                    float3 avgPig = (accum.a * accum.rgb + alpha * newPigment) / max(newMass, 0.001);
+                    PaintAccumTexture[p] = float4(avgPig, newMass);
+
+                    float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
+                    PaintTexture[p] = float4(color, 1.0);
+                }
+        }
+        else
+        {
+        // ouside canvas bounds remove it
+            pos = float3(0, -1000, 0);
+            vel = float3(0, 0, 0);
+        }
+
+        Positions[id.x] = pos;
+        Velocities[id.x] = vel;
+        return;
+    }
+    
 
     float2 hitUV;
     bool didHit;
@@ -590,21 +728,20 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         didHit
     );
 
-    if (didHit)
+    if (didHit && ParticleStates[id.x] != 2)
     {
         float bounce = surfaceParams.x;
         float rough = surfaceParams.y;
         float absorb = surfaceParams.z;
 
-        
         float woodMask = saturate((absorb - 0.3) / 0.4);
         float glassMask = saturate(1.0 - woodMask);
         float3 normal = canvasNormal;
 
+        // GOODI
         float3 vN = dot(vel, normal) * normal;
         float3 vT = vel - vN;
 
-        // wood pre-pass: burst + rapid friction
         if (woodMask > 0.2)
         {
             float speed = length(vT);
@@ -617,13 +754,11 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float3 motionForPaint = vel;
         float motionSpeed = length(motionForPaint);
 
-        // normal response
         if (absorb > 0.8)
             vN = float3(0, 0, 0);
         else
             vN = -vN * bounce;
 
-        // gravity slide
         float3 gravityDir = float3(0, -gravity, 0);
         float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
         float slideStrength = length(slideDir);
@@ -646,60 +781,31 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             }
         }
         else
-        {
             vT = float3(0, 0, 0);
-        }
 
         float friction = rough + absorb * 3.0;
         vT *= max(0.0, 1.0 - friction * deltaTime);
-
         vT *= (1.0 - rough * absorb) * (1.0 - woodMask * 0.9);
         vel = vN + vT;
 
-
-        float normalVel = dot(vel, normal);
-        float tangentSpeed = length(vT);
-
-// كم الجزيء "مضغوط" داخل السطح أو يحاول يطلع منه
-        float penetrationBias = abs(normalVel);
-
-// الميل الحقيقي للسطح بالنسبة للجاذبية
         float upDot = dot(normal, float3(0, 1, 0));
         float flatness = abs(upDot);
-        float gravityAlignment = abs(dot(normal, float3(0, -1, 0)));
 
-
-        float stickThreshold = lerp(0.003, 0.03, gravityAlignment);
-
-// إذا الحركة ضعيفة + ليس هناك ضغط عمودي قوي
-        // =======================
-// FIX STABILITY (NO FLICKER)
-// =======================
-
-// projection only ONCE
         float3 targetPos = prevPos;
         targetPos += normal * (particleRadius * 0.5);
 
-// stability test
         float speedCheck = length(vT);
         float normalPush = abs(dot(vel, normal));
-
-// threshold adaptive
-       
         float threshold = lerp(0.01, 0.04, flatness);
 
-// إذا الجزيء شبه ساكن → نثبته مباشرة على السطح
-        if (speedCheck < threshold && normalPush < 0.015)
+        if (speedCheck < threshold && normalPush < 0.015 && flatness > 0.9)
         {
             pos = targetPos;
             vel = float3(0, 0, 0);
             vT = float3(0, 0, 0);
         }
         else
-        {
-    // مهم: لا تعمل أي correction إضافي هنا
             pos = targetPos;
-        }
 
         vT *= saturate(1.0 - woodMask * 0.9);
 
@@ -710,11 +816,13 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         if (absorb < 0.8)
             pos += vT * deltaTime;
+    //  END GOODI
 
-        int2 coord = int2(
-            (int) (hitUV.x * paintTextureSize),
-            (int) (hitUV.y * paintTextureSize)
-        );
+        // Mark deposited
+        ParticleStates[id.x] = 2;
+
+        // effectiveAbsorb: only used for paint deposit shape
+        float effectiveAbsorb = absorb * (1.0 - paintAbsorptionResistance);
 
         if (absorb > 0.8)
         {
@@ -722,15 +830,28 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             vel = float3(0, 0, 0);
         }
 
-        // streak calculation 
-        int radius = (int) lerp(2, 10, absorb + rough * 0.5);
-        float paintSpeed = length(vT);
+        int2 coord = int2(
+        (int) (hitUV.x * paintTextureSize),
+        (int) (hitUV.y * paintTextureSize)
+    );
 
+        // Radius: your original formula, scaled by paintSpread
+        //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
+        //radius = max(radius, 1);
+        float fluidFactor = lerp(0.6, 2.2, paintFlowRate); // ماء أكبر
+        float surfaceFactor = lerp(1.6, 0.7, absorb); // زجاج ينتشر أكثر
+        surfaceFactor *= lerp(1.4, 0.8, rough); // سطح أملس = أكبر
+
+        int radius = max(4, (int) (
+    paintSpread * 6.0 *
+    fluidFactor *
+    surfaceFactor
+));
+
+        float paintSpeed = length(vT);
         float streak;
         if (woodMask < 0.2)
-        {
             streak = paintSpeed * 4.0 * glassMask;
-        }
         else
         {
             streak = paintSpeed * 0.6;
@@ -739,90 +860,163 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         }
         streak = saturate(streak);
 
-        //  paint loop:  shape logic + KM mixing
-        for (int x = -radius; x <= radius; x++)
-        {
-            for (int y = -radius; y <= radius; y++)
-            {
-                int2 p;
+        float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
 
-                if (absorb < 0.7)
+        const int radialSteps = radius * 3;
+        const int angleSteps = radius * 8;
+
+        for (int r = 0; r < radialSteps; r++)
+            for (int a = 0; a < angleSteps; a++)
+            {
+                float rr = pow((float) r / radialSteps, 1.8);
+                float angle = ((float) a / angleSteps) * 6.2831853;
+
+    // اتجاه الحركة
+                float2 flowDir = float2(0, 0);
+                if (motionSpeed > 0.0001)
+                    flowDir = normalize(motionForPaint.xy);
+
+    // noise مختلف لكل بقعة
+                float noise =
+frac(sin(dot(float2(rr * 17.3, angle * 9.7) + coord, float2(12.9898, 78.233))) * 43758.5453);
+
+    // قوة splash حسب سرعة الضربة
+                float impact = saturate(motionSpeed * 2.0);
+                float spikeCount = lerp(8.0, 24.0, sqrt(impact));
+                float spikeStrength = lerp(0.8, 2.8, impact);
+    // توزيع اتجاهي
+                float directional =
+        saturate(dot(float2(cos(angle), sin(angle)), flowDir));
+
+    // شكل الطرشات
+                float fingerNoise =
+frac(sin((angle * 13.7 + rr * 29.1 + noise * 17.3)) * 43758.5453);
+
+                // Base lamella (solid center)
+                float baseRadius = rr * radius;
+
+// Rim zone only (where fingers can start)
+                float rimMask = smoothstep(0.72, 0.96, rr);
+                float fingerShape =
+pow(saturate(abs(sin(angle * spikeCount + fingerNoise * 8.0))), 12.0);
+
+// Directional bias (stronger in travel direction)
+                float directionalBias =
+lerp(0.4, 5.5, pow(directional, 1.5));
+
+// Finger length grows outward only
+                float fingerLength =
+rimMask *
+fingerShape *
+spikeStrength *
+directionalBias *
+radius *
+lerp(4.0, 14.0, impact);
+
+// Final radius
+                float splashRadius = baseRadius + fingerLength;
+
+                int raySteps = max(1, (int) splashRadius);
+
+                for (int s = 0; s <= raySteps; s++)
                 {
-                    float2 dir2 = float2(0, 0);
-                    if (woodMask < 0.2)
+                    float t = (float) s / raySteps;
+                    float startRadius = radius * 0.65; // ابدأ من الحافة وليس من المركز
+                    float currentRadius = lerp(startRadius, splashRadius, t);
+                    int2 offset = int2(
+        (int) (cos(angle) * currentRadius),
+        (int) (sin(angle) * currentRadius)
+    );
+
+                    int2 p = coord + offset;
+
+                    if (p.x < 0 || p.x >= paintTextureSize ||
+        p.y < 0 || p.y >= paintTextureSize)
+                        continue;
+
+                    float alpha =
+        pow(1.0 - t, 1.4) +
+        fingerShape * rimMask * (1.0 - t) * 0.25;
+
+                    alpha *= (1.0 - rough * 0.4);
+                    alpha *= lerp(1.0, 0.65, effectiveAbsorb);
+
+                    float depositedMass = alpha;
+                    float4 accum = PaintAccumTexture[p];
+                    float storedMass = accum.a;
+                    float3 oldPigment = accum.rgb;
+
+                    float effectiveOldMass;
+                    if (paintMixRate < 0.05)
+                        effectiveOldMass = min(storedMass, 0.1);
+                    else if (paintMixRate < 0.5)
                     {
-                        if (motionSpeed > 0.0001)
-                            dir2 = motionForPaint.xy / motionSpeed;
-                        streak = saturate(motionSpeed * 4.0) * 0.25;
+                        effectiveOldMass = storedMass * storedMass * 2.0;
+                        effectiveOldMass = min(effectiveOldMass, 500.0);
                     }
                     else
+                        effectiveOldMass = min(storedMass, 5.0);
+
+                    float newEffectiveMass = effectiveOldMass + depositedMass;
+
+                    float3 avgPigment =
+        (effectiveOldMass * oldPigment + depositedMass * newPigment)
+        / max(newEffectiveMass, 0.001);
+
+                    float newStoredMass = storedMass + depositedMass;
+                    PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
+
+                    float spongeMask = saturate((absorb - 0.6) / 0.3);
+
+                    float3 color = avgPigment * avgPigment;
+                    float luminance = dot(color, float3(0.299, 0.587, 0.114));
+                    float3 spongeColor = lerp(color, luminance.xxx, 0.30);
+
+                    float3 displayColor = lerp(color, spongeColor, spongeMask);
+                    displayColor = clamp(displayColor, 0.0, 1.0);
+                    displayColor *= (1.0 - absorb * 0.03);
+
+                    PaintTexture[p] = float4(displayColor, 1.0);
+                }
+    // قطرات صغيرة
+                
+                if (fingerShape > 0.82 && impact > 0.45)
+                {
+                    float dropletDist = splashRadius + radius * (0.4 + noise * 1.8);
+
+                    int2 dripP = coord + int2(
+        (int) (cos(angle) * dropletDist),
+        (int) (sin(angle) * dropletDist)
+    );
+
+                    if (dripP.x >= 0 && dripP.x < paintTextureSize &&
+        dripP.y >= 0 && dripP.y < paintTextureSize)
                     {
-                        float burst = motionSpeed * 0.6;
-                        burst *= exp(-rough * 12.0);
-                        streak = saturate(burst);
-                        streak = min(streak, 0.12);
+                        PaintTexture[dripP] = float4(paintColour.rgb, 1.0);
                     }
-                    // streaked offset along motion direction
-                    p = coord + int2(x, y) + int2(
-                        (int) (dir2.x * streak * radius),
-                        (int) (dir2.y * streak * radius)
-                    );
                 }
-                else
-                {
-                    p = coord + int2(x, y);
-                }
-
-                if (p.x < 0 || p.x >= paintTextureSize ||
-                    p.y < 0 || p.y >= paintTextureSize)
-                    continue;
-
-
-                float dist, alpha;
-                float distF = length(float2(x, y)) / max(radius, 1);
-
-                if (absorb > 0.8)
-                {
-                    float absorbFalloff = pow(saturate(1.0 - distF), 2.5);
-                    alpha = absorbFalloff;
-                }
-                else
-                {
-                    alpha = saturate(1.0 - distF);
-                    alpha *= (1.0 - rough * distF);
-                    alpha *= (1.0 - absorb * 0.5);
-                }
-
-                // MIXING
-                float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
-                float depositedMass = alpha;
-
-                float4 accum = PaintAccumTexture[p];
-                float oldMass = accum.a;
-                float3 oldPigment = accum.rgb;
-
-                float newMass = oldMass + depositedMass;
-                float3 avgPigment = (oldMass * oldPigment + depositedMass * newPigment)
-                                  / max(newMass, 0.001);
-
-                PaintAccumTexture[p] = float4(avgPigment, newMass);
-
-                float spongeMask = saturate((absorb - 0.6) / 0.3);
-
-
-                float3 color = avgPigment * avgPigment;
-
-
-                float luminance = dot(color, float3(0.299, 0.587, 0.114));
-                float3 spongeColor = lerp(color, luminance.xxx, 0.30);
-
-
-                float3 displayColor = lerp(color, spongeColor, spongeMask);
-
-                displayColor = clamp(displayColor, 0.0, 1.0);
-                displayColor *= (1.0 - absorb * 0.03);
-
-                PaintTexture[p] = float4(displayColor, 1.0);
+                
+            }
+    }
+    
+    if (!didHit && ParticleStates[id.x] != 2)
+    {
+        float3 n = canvasNormal;
+        float dist = dot(pos - canvasCentre, n);
+        if (dist < particleRadius && dist > -particleRadius * 2.0)
+        {
+            float u = dot(pos - canvasCentre, canvasRight);
+            float v = dot(pos - canvasCentre, canvasUp);
+            if (abs(u) <= canvasHalfSize.x && abs(v) <= canvasHalfSize.y)
+            {
+            // Treat as hit — set UV and mark deposited
+                hitUV = float2(
+                1.0 - (u / canvasHalfSize.x + 1.0) * 0.5,
+                1.0 - (v / canvasHalfSize.y + 1.0) * 0.5
+            );
+                ParticleStates[id.x] = 2;
+                vel = float3(0, 0, 0);
+                pos = pos - n * (dist - particleRadius);
             }
         }
     }
@@ -847,7 +1041,8 @@ void UpdateDensityTexture(uint3 id : SV_DispatchThreadID)
 void UpdateWhiteParticles(uint3 id : SV_DispatchThreadID)
 {
     // Early exit if thread index exceeds particle count
-    if (id.x >= min(MaxWhiteParticleCount, WhiteParticleCounters[0])) return;
+    if (id.x >= min(MaxWhiteParticleCount, WhiteParticleCounters[0]))
+        return;
 
     // Update particle
     float deltaTime = whiteParticleDeltaTime;
@@ -947,7 +1142,8 @@ void UpdateWhiteParticles(uint3 id : SV_DispatchThreadID)
 [numthreads(ThreadGroupSize, 1, 1)]
 void WhiteParticlePrepareNextFrame(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= MaxWhiteParticleCount) return;
+    if (id.x >= MaxWhiteParticleCount)
+        return;
 
     // Copy the surviving particles back into the main particle buffer
     if (id.x < WhiteParticleCounters[1])
