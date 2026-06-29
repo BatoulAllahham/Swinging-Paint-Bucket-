@@ -71,7 +71,11 @@ const float interactionInputRadius;
 // Volume texture settings
 RWTexture3D<float> DensityMap;
 const uint3 densityMapSize;
+//hole
 const float holeSize;
+const float3 holePosition;
+const int holeOrientation; 
+
 float sceneFloorY;
 int surfaceType;
 float3 surfaceParams;
@@ -121,65 +125,104 @@ float Remap01(float val, float minVal, float maxVal)
 
 void ResolveCollisions(uint particleID, inout float3 pos, inout float3 vel, float collisionDamping)
 {
+    // Skip already processed particles
     if (ParticleStates[particleID] == 1) 
     {
         return; 
     }
+    
     float3 posLocal = mul(worldToLocal, float4(pos, 1)).xyz;
     float3 velocityLocal = mul(worldToLocal, float4(vel, 0)).xyz;
 
     const float bucketRadius = 0.5;
-    float floorY = sceneFloorY;
+    float floorY = -1;
     const float ceilingY = 1.0;
     float horizontalDist = length(posLocal.xz);
 
-//  if (sceneFloorY +0.05>pos.y)
-//  {
-//         pos = mul(localToWorld, float4(posLocal, 1)).xyz;
-//         vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
-  
-//         pos.y = sceneFloorY ; // Add a small offset to prevent sticking to the floor
-        
-//         vel.y *= -1 * collisionDamping;
-//         vel.xz *= 0.00001; 
-       
-//     }
-   bool isOverHole = (abs(posLocal.x) <= holeSize && abs(posLocal.z) <= holeSize);
-if (isOverHole && posLocal.y >ceilingY+0.01) 
+    bool isOverHole = false;
+    bool isAtSideHole = false;
+
+    // Hole Detection Logic based on Orientation
+      if (holeOrientation == 0) 
     {
-        ParticleStates[particleID] = 1; // mark as out
-        return; // skip the rest of the bucket collisions
+        
+        
+        isOverHole = length(posLocal.xz - holePosition.xz) <= holeSize;
+        
+        //Hole is placed at the bottom floor, and particle falls below floor level
+        if (isOverHole && holePosition.y <= floorY  && posLocal.y < floorY) 
+        {
+            ParticleStates[particleID] = 1; 
+            return; 
+        }
+        
+        //Hole is placed at the top ceiling, and particle pushes above ceiling level
+        if (isOverHole && holePosition.y >= ceilingY  && posLocal.y > ceilingY) 
+        {
+            ParticleStates[particleID] = 1; 
+            return; 
+        }
+    }
+    else if (holeOrientation == 1)
+    {
+
+        bool withinVerticalHoleBounds = (posLocal.y >= holePosition.y - holeSize) && (posLocal.y <= holePosition.y + holeSize);
+
+        float2 holeDir = normalize(holePosition.xz);
+
+        float2 tangentDir = float2(-holeDir.y, holeDir.x);
+        
+        float distanceTowardsHole = dot(posLocal.xz, holeDir);
+
+        float distanceBesideHole = abs(dot(posLocal.xz, tangentDir));
+
+        bool withinHorizontalHoleBounds = (distanceTowardsHole > 0) && (distanceBesideHole <= holeSize);
+        
+        if (withinVerticalHoleBounds && withinHorizontalHoleBounds)
+        {
+            isAtSideHole = true;
+        }
+        
+
+        if (isAtSideHole && horizontalDist >= bucketRadius)
+        {
+            ParticleStates[particleID] = 1; // Mark as out
+            return;
+        }
     }
 
-       if (horizontalDist >= bucketRadius)
+    // Cylinder Wall Collision
+    if (horizontalDist >= bucketRadius)
     {
         posLocal.xz = normalize(posLocal.xz) * bucketRadius;
         float2 wallNormal = normalize(posLocal.xz);
         float dotVel = dot(velocityLocal.xz, wallNormal);
+        
         if (dotVel > 0)
         {
             velocityLocal.xz -= (1.0 + collisionDamping) * dotVel * wallNormal;
         }
     }
 
- 
-
-if (posLocal.y >= ceilingY)
-{
-    if (!isOverHole)
+    // Ceiling Collision
+    if (posLocal.y >= ceilingY)
     {
-        posLocal.y = ceilingY;
+        if (!(holeOrientation == 0 && isOverHole))
+        {
+            posLocal.y = ceilingY;
+            velocityLocal.y *= -1 * collisionDamping;
+        }
+    }
+    // Floor Collision
+    else if (posLocal.y <= floorY) 
+    {
+        posLocal.y = floorY;
         velocityLocal.y *= -1 * collisionDamping;
     }
-}
-    else if (posLocal.y <= sceneFloorY-1)
-    {
-    posLocal.y = floorY;
-    velocityLocal.y *= -1 * collisionDamping;
-}
+
+
     pos = mul(localToWorld, float4(posLocal, 1)).xyz;
     vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
-
 }
 [numthreads(ThreadGroupSize, 1, 1)]
 void ExternalForces(uint3 id : SV_DispatchThreadID)

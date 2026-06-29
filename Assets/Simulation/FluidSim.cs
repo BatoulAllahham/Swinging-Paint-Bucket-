@@ -39,22 +39,26 @@ namespace Seb.Fluid.Simulation
 		public float pressureMultiplier = 288;
 		public float nearPressureMultiplier = 2.15f;
 		public float viscosityStrength = 0;
-		public float holeSize = 0.1f;
+
 		public Transform floorTransform; // This will hold the actual Floor object
 		[Range(0, 1)] public float collisionDamping = 0.95f;
-
-		[Header("Foam Settings")] public bool foamActive;
-		public int maxFoamParticleCount = 1000;
-		public float trappedAirSpawnRate = 70;
-		public float spawnRateFadeInTime = 0.5f;
-		public float spawnRateFadeStartTime = 0;
-		public Vector2 trappedAirVelocityMinMax = new(5, 25);
-		public Vector2 foamKineticEnergyMinMax = new(15, 80);
-		public float bubbleBuoyancy = 1.5f;
-		public int sprayClassifyMaxNeighbours = 5;
-		public int bubbleClassifyMinNeighbours = 15;
-		public float bubbleScale = 0.5f;
-		public float bubbleChangeScaleSpeed = 7;
+		[Header("Hole Settings")]
+		public Vector3 holePosition = Vector3.zero; 
+	    public int holeOrientation = 0;
+		 [Range(0.0f, 0.5f)]
+		public float holeSize = 0.1f;
+		[HideInInspector] public bool foamActive;
+		[HideInInspector] public int maxFoamParticleCount = 1000;
+		[HideInInspector] public float trappedAirSpawnRate = 70;
+		[HideInInspector] public float spawnRateFadeInTime = 0.5f;
+		[HideInInspector] public float spawnRateFadeStartTime = 0;
+		[HideInInspector] public Vector2 trappedAirVelocityMinMax = new(5, 25);
+		[HideInInspector] public Vector2 foamKineticEnergyMinMax = new(15, 80);
+		[HideInInspector] public float bubbleBuoyancy = 1.5f;
+		[HideInInspector] public int sprayClassifyMaxNeighbours = 5;
+		[HideInInspector] public int bubbleClassifyMinNeighbours = 15;
+		[HideInInspector] public float bubbleScale = 0.5f;
+		[HideInInspector]public float bubbleChangeScaleSpeed = 7;
 
 		
 
@@ -71,7 +75,7 @@ namespace Seb.Fluid.Simulation
 		public ComputeBuffer foamBuffer { get; private set; }
 		public ComputeBuffer foamSortTargetBuffer { get; private set; }
 		public ComputeBuffer foamCountBuffer { get; private set; }
-		public ComputeBuffer positionBuffer { get; private set; }
+		public GraphicsBuffer positionBuffer { get; private set; }
 		public ComputeBuffer velocityBuffer { get; private set; }
 		public ComputeBuffer densityBuffer { get; private set; }
 		public ComputeBuffer predictedPositionsBuffer;
@@ -126,7 +130,7 @@ namespace Seb.Fluid.Simulation
 			spatialHash = new SpatialHash(numParticles);
 			
 			// Create buffers
-			positionBuffer = CreateStructuredBuffer<float3>(numParticles);
+			positionBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numParticles, sizeof(float) * 3);
 			predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
 			velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
 			densityBuffer = CreateStructuredBuffer<float2>(numParticles);
@@ -142,7 +146,7 @@ namespace Seb.Fluid.Simulation
 
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
-				{ positionBuffer, "Positions" },
+				
 				{ predictedPositionsBuffer, "PredictedPositions" },
 				{ velocityBuffer, "Velocities" },
 				{ densityBuffer, "Densities" },
@@ -164,13 +168,13 @@ namespace Seb.Fluid.Simulation
 			SetInitialBufferData(spawnData);
 
 			// External forces kernel
-			SetBuffers(compute, externalForcesKernel, bufferNameLookup, new ComputeBuffer[]
-			{
-				positionBuffer,
-				predictedPositionsBuffer,
-				velocityBuffer,
-				
-			});
+				SetBuffers(compute, externalForcesKernel, bufferNameLookup, new ComputeBuffer[]
+		{
+			predictedPositionsBuffer,
+			velocityBuffer,
+		});
+		// Manually bind GraphicsBuffer for the shader graph
+		compute.SetBuffer(externalForcesKernel, "Positions", positionBuffer); 
 
 			// Spatial hash kernel
 			SetBuffers(compute, spatialHashKernel, bufferNameLookup, new ComputeBuffer[]
@@ -182,30 +186,31 @@ namespace Seb.Fluid.Simulation
 			});
 
 			// Reorder kernel
-			SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
-			{
-				positionBuffer,
-				sortTarget_positionBuffer,
-				predictedPositionsBuffer,
-				sortTarget_predictedPositionsBuffer,
-				velocityBuffer,
-				sortTarget_velocityBuffer,
-				spatialHash.SpatialIndices,
-				stateBuffer, sortTarget_stateBuffer
-			});
-
+		SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
+		{
+			sortTarget_positionBuffer,
+			predictedPositionsBuffer,
+			sortTarget_predictedPositionsBuffer,
+			velocityBuffer,
+			sortTarget_velocityBuffer,
+			spatialHash.SpatialIndices,
+			stateBuffer, sortTarget_stateBuffer
+		});
+		 // Manually bind GraphicsBuffer for the shader graph
+		compute.SetBuffer(reorderKernel, "Positions", positionBuffer);
 			// Reorder copyback kernel
-			SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
-			{
-				positionBuffer,
-				sortTarget_positionBuffer,
-				predictedPositionsBuffer,
-				sortTarget_predictedPositionsBuffer,
-				velocityBuffer,
-				sortTarget_velocityBuffer,
-				spatialHash.SpatialIndices,
-				stateBuffer, sortTarget_stateBuffer
-			});
+		SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
+		{
+			sortTarget_positionBuffer,
+			predictedPositionsBuffer,
+			sortTarget_predictedPositionsBuffer,
+			velocityBuffer,
+			sortTarget_velocityBuffer,
+			spatialHash.SpatialIndices,
+			stateBuffer, sortTarget_stateBuffer
+		});
+		// Manually bind GraphicsBuffer for the shader graph
+		compute.SetBuffer(reorderCopybackKernel, "Positions", positionBuffer); 
 
 			// Density kernel
 			SetBuffers(compute, densityKernel, bufferNameLookup, new ComputeBuffer[]
@@ -241,12 +246,13 @@ namespace Seb.Fluid.Simulation
 			});
 
 			// Update positions kernel
-			SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
-			{
-				positionBuffer,
-				velocityBuffer,
-				stateBuffer
-			});
+		SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
+		{
+			velocityBuffer,
+			stateBuffer
+		});
+		 // Manually bind GraphicsBuffer for the shader grapgh
+		compute.SetBuffer(updatePositionsKernel, "Positions", positionBuffer);
 
 			// Render to 3d tex kernel
 			SetBuffers(compute, renderKernel, bufferNameLookup, new ComputeBuffer[]
@@ -501,6 +507,8 @@ namespace Seb.Fluid.Simulation
             compute.SetVector("boundsSize", simBoundsSize);
             compute.SetVector("centre", simBoundsCentre);
             compute.SetFloat("holeSize", holeSize);
+			compute.SetVector("holePosition", holePosition);
+			compute.SetInt("holeOrientation", holeOrientation);
 
             // CANVAS
             if (canvasCollision != null)
@@ -603,15 +611,22 @@ namespace Seb.Fluid.Simulation
 
 		private float ActiveTimeScale => inSlowMode ? slowTimeScale : normalTimeScale;
 
-		void OnDestroy()
+// REPLACE YOUR ONDESTROY METHOD WITH THIS:
+	void OnDestroy()
+	{
+		foreach (var kvp in bufferNameLookup)
 		{
-			foreach (var kvp in bufferNameLookup)
-			{
-				Release(kvp.Key);
-			}
-
-			spatialHash.Release();
+			Release(kvp.Key);
 		}
+
+		// Explicitly release our upgraded GraphicsBuffer safely
+		if (positionBuffer != null)
+		{
+			positionBuffer.Release();
+		}
+
+		spatialHash.Release();
+	}
 
 
 		public struct FoamParticle
