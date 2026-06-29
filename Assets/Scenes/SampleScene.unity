@@ -1013,7 +1013,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &896066164
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1035,7 +1035,7 @@ VFXRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 896066163}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 0
   m_DynamicOccludee: 1
@@ -2079,7 +2079,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2585279340253128925, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: gravity
@@ -2087,7 +2087,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holeSize
-      value: 0.14
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: paintColour.b
@@ -2103,7 +2103,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 4000
+      value: 10000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -2112,6 +2112,14 @@ PrefabInstance:
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: floorTransform
       value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holePosition.x
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holePosition.y
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: maxTimestepFPS
@@ -2126,8 +2134,12 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holeOrientation
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
-      value: 0.1
+      value: 0.05
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
@@ -2139,11 +2151,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 100
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 50
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
@@ -2167,7 +2179,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: debug_num_particles
-      value: 22480
+      value: 28710
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: particleSpawnDensity
@@ -2175,7 +2187,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: simulationTargetDensity
-      value: 4000
+      value: 5000
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: spawnRegions.Array.size
@@ -2494,7 +2506,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 9000
+      value: 30000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -2514,7 +2526,7 @@ PrefabInstance:
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
-      value: 0.1
+      value: 0.05
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
@@ -2526,11 +2538,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 100
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 50
+      value: 5
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
@@ -2586,7 +2598,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: scale
-      value: 2
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: colourMap.atime0
