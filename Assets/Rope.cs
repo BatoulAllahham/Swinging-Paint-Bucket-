@@ -110,8 +110,8 @@ public class Rope : MonoBehaviour
     void ApplyConstraints()
     {
         //pinned points
-        positions[0] = hangPoint.position;
-        positions[numSegments] = bucket.TransformPoint(bucketTopOffset);        
+        previousPositions[numSegments] = positions[numSegments];
+        positions[numSegments] = bucket.TransformPoint(bucketTopOffset);
         for (int iter = 0; iter < constraintIterations; iter++)    //iteration to reduce the erros
         {
             //we go over each pair of points
