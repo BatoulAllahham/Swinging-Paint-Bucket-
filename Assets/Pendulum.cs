@@ -257,6 +257,7 @@ public class Pendulum : MonoBehaviour
 
     private void FixedUpdate()
     {
+        ropeLength = ropeComponent.RopeLength;
         if (!isDragging)
         {
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);

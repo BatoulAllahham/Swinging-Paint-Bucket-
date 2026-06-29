@@ -4,6 +4,7 @@ using UnityEngine;
 public class Rope : MonoBehaviour
 {
     public float ropeLength = 8.0f; // the total L
+    private float previousRopeLength;
     public float RopeLength => ropeLength;
 
     [Header("References")]
@@ -38,6 +39,7 @@ public class Rope : MonoBehaviour
 
     void Start()
     {
+        previousRopeLength = ropeLength;
         InitializeRope();
         InitializeMeshComponents();
         AllocateMeshData();
@@ -55,8 +57,26 @@ public class Rope : MonoBehaviour
             ApplyConstraints();
         }
 
+        if (!Mathf.Approximately(ropeLength, previousRopeLength))
+        {
+            previousRopeLength = ropeLength;
+            OnRopeLengthChanged();
+        }
+
+
         UpdateVertexPositions();
     }
+
+
+    void OnRopeLengthChanged()
+    {
+        // Recompute segment length
+        segmentLength = ropeLength / numSegments;
+
+        // Reinitialize rope positions along new length
+        InitializeRope();
+    }
+
 
     //(1st step) : just put the points in their place
     void InitializeRope()
