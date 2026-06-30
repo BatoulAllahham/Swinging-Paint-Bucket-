@@ -44,7 +44,7 @@ public class Rope : MonoBehaviour
         InitializeMeshComponents();
         AllocateMeshData();
         BuildStaticMeshData();
-        UpdateVertexPositions(); 
+        UpdateVertexPositions();
     }
 
     void FixedUpdate()
@@ -103,7 +103,7 @@ public class Rope : MonoBehaviour
 
             previousPositions[i] = positions[i];
         }
-           
+
     }
 
 
@@ -243,7 +243,7 @@ public class Rope : MonoBehaviour
         int vertexCount = numPoints * radialSegments; // 31 * 8 = 248 vertices
         int triangleCount = numSegments * radialSegments * 2; // 30 * 8 * 2 = 480 triangles
 
-        vertices = new Vector3[vertexCount]; 
+        vertices = new Vector3[vertexCount];
         triangles = new int[triangleCount * 3];//1440 vertices 
         uv = new Vector2[vertexCount];
     }
@@ -251,7 +251,7 @@ public class Rope : MonoBehaviour
 
     //fill the uv and triangles 
     void BuildStaticMeshData()
-    {   
+    {
         int numPoints = numSegments + 1;
 
         for (int i = 0; i < numPoints; i++)
@@ -286,7 +286,7 @@ public class Rope : MonoBehaviour
         }
 
         // Assign static data to mesh once
-        ropeMesh.vertices = vertices;     
+        ropeMesh.vertices = vertices;
         ropeMesh.triangles = triangles;
         ropeMesh.uv = uv;
     }
@@ -294,5 +294,5 @@ public class Rope : MonoBehaviour
 
 
 
-    
+
 }
