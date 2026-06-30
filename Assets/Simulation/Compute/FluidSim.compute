@@ -586,12 +586,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     float3 pos = prevPos + vel * deltaTime;
 
     ResolveCollisions(id.x, pos, vel, collisionDamping);
-    
-    // count the number of particles inside the bucket
-    if (ParticleStates[id.x] == 0) 
-    {
-        InterlockedAdd(BucketParticleCount[0], 1);
-    }
 
     // CANVAS
     const float particleRadius = smoothingRadius * 0.5;
@@ -600,7 +594,10 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     
     if (ParticleStates[id.x] == 2)
     {
-        float3 n = normalize(canvasNormal);
+        
+        float3 n = canvasNormal;
+        if (dot(n, float3(0, 1, 0)) < 0)
+            n = -n;
 
         float absorb = surfaceParams.z;
         float rough = surfaceParams.y;
@@ -621,26 +618,17 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         // Friction kills velocity each frame
         // Surface roughness + absorption (absorbed paint cant slide) + viscosity
-        float friction = rough * 2.0 + effectiveAbsorb * 6.0 + viscousDrag * 3.0;
+        float friction = rough * 0.8 + effectiveAbsorb * 1.2 + viscousDrag * 0.6;
         vel *= max(0.0, 1.0 - friction * deltaTime);
 
-        float3 worldGravity = float3(0, -gravity, 0);
-
-// إسقاط الجاذبية على سطح اللوحة
-        float3 slideForce = worldGravity - n * dot(worldGravity, n);
-
-// مقدار الميل الحقيقي بغض النظر عن الاتجاه
-        float slideStrength = length(slideForce);
-
-// هل يوجد ميل فعلي؟
-        bool canSlide = (slideStrength > 0.01) && (effectiveAbsorb < 0.98);
-
+        bool canSlide = (flatness < 0.995);
         if (canSlide)
         {
-            if (slideStrength > 0.00001)
-            {
+            float3 gravDir = float3(0, -gravity, 0);
+            float3 slideForce = gravDir - n * dot(gravDir, n);
+            float slideStrength = length(slideForce);
+            if (slideStrength > 0.0001)
                 slideForce /= slideStrength;
-            }
 
         // Gravity pulls paint down; viscosity resists
         // wallpaint: 0.05 * (1-0) = 0.05 small but nonzero on glass
@@ -658,7 +646,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             vel = float3(0, 0, 0);
 
         // remove when fully stopped
-        if (length(vel) < 0.002)
+        if (length(vel) < 0.00005 && flatness > 0.98)
         {
             pos = float3(0, -1000, 0);
             vel = float3(0, 0, 0);
@@ -676,6 +664,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             float uvX = 1.0 - (u / canvasHalfSize.x + 1.0) * 0.5;
             float uvY = 1.0 - (v / canvasHalfSize.y + 1.0) * 0.5;
             int2 coord = int2((int) (uvX * paintTextureSize), (int) (uvY * paintTextureSize));
+
 
             // Trail radius: small for viscous/absorbed, larger for watery
             //int radius = max(1, (int) (lerp(1, 5, paintFlowRate) * paintSpread));
@@ -718,7 +707,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         Positions[id.x] = pos;
         Velocities[id.x] = vel;
-
         return;
     }
     
@@ -740,8 +728,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         didHit
     );
 
-    if (didHit && ParticleStates[id.x] != 2)
+    if (didHit)
     {
+        float2 stableUV = hitUV;
         float bounce = surfaceParams.x;
         float rough = surfaceParams.y;
         float absorb = surfaceParams.z;
@@ -803,14 +792,14 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float upDot = dot(normal, float3(0, 1, 0));
         float flatness = abs(upDot);
 
-        float3 targetPos = prevPos;
-        targetPos += normal * (particleRadius * 0.5);
+        float3 targetPos = pos;
+        targetPos = targetPos - normal * (dot(targetPos - canvasCentre, normal) - particleRadius);
 
         float speedCheck = length(vT);
         float normalPush = abs(dot(vel, normal));
         float threshold = lerp(0.01, 0.04, flatness);
 
-        if (speedCheck < threshold && normalPush < 0.015 && flatness > 0.9)
+        if (speedCheck < threshold && normalPush < 0.015 && flatness > 0.98)
         {
             pos = targetPos;
             vel = float3(0, 0, 0);
@@ -832,33 +821,34 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         // Mark deposited
         ParticleStates[id.x] = 2;
+        
 
         // effectiveAbsorb: only used for paint deposit shape
         float effectiveAbsorb = absorb * (1.0 - paintAbsorptionResistance);
 
         if (absorb > 0.8)
         {
-            pos = prevPos;
-            vel = float3(0, 0, 0);
+            float3 edgeFlow = slideDir;
+
+            float2 localOffset = hitUV - float2(0.5, 0.5);
+            float edgeFactor = saturate(length(localOffset) * 2.0);
+
+            vel = edgeFlow * paintFlowRate * edgeFactor * 0.06;
+
+    // keep particle on the actual painted spot
+            pos = targetPos;
         }
 
         int2 coord = int2(
-        (int) (hitUV.x * paintTextureSize),
-        (int) (hitUV.y * paintTextureSize)
-    );
+    (int) (stableUV.x * paintTextureSize),
+    (int) (stableUV.y * paintTextureSize)
+);
 
         // Radius: your original formula, scaled by paintSpread
         //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
         //radius = max(radius, 1);
-        float fluidFactor = lerp(0.6, 2.2, paintFlowRate); // ماء أكبر
-        float surfaceFactor = lerp(1.6, 0.7, absorb); // زجاج ينتشر أكثر
-        surfaceFactor *= lerp(1.4, 0.8, rough); // سطح أملس = أكبر
-
-        int radius = max(4, (int) (
-    paintSpread * 6.0 *
-    fluidFactor *
-    surfaceFactor
-));
+        float spreadScale = lerp(1.0, paintSpread, paintFlowRate);
+        int radius = max(3, (int) (lerp(2, 10, absorb + rough * 0.5) * spreadScale));
 
         float paintSpeed = length(vT);
         float streak;
@@ -874,143 +864,136 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
 
-        const int radialSteps = radius * 3;
-        const int angleSteps = radius * 8;
-
-        for (int r = 0; r < radialSteps; r++)
-            for (int a = 0; a < angleSteps; a++)
+        for (int x = -radius; x <= radius; x++)
+            for (int y = -radius; y <= radius; y++)
             {
-                float rr = pow((float) r / radialSteps, 1.8);
-                float angle = ((float) a / angleSteps) * 6.2831853;
+                int2 p;
+                float angle = atan2((float) y, (float) x);
+                float dist = length(float2(x, y)) / max(radius, 1);
 
-    // اتجاه الحركة
-                float2 flowDir = float2(0, 0);
-                if (motionSpeed > 0.0001)
-                    flowDir = normalize(motionForPaint.xy);
+                float splashNoise =
+    frac(sin(dot(float2(angle * 7.3, dist * 13.7) + coord,
+    float2(12.9898, 78.233))) * 43758.5453);
 
-    // noise مختلف لكل بقعة
-                float noise =
-frac(sin(dot(float2(rr * 17.3, angle * 9.7) + coord, float2(12.9898, 78.233))) * 43758.5453);
+                float splashShape =
+    pow(abs(sin(angle * 8.0 + splashNoise * 4.0)), 5.0);
 
-    // قوة splash حسب سرعة الضربة
-                float impact = saturate(motionSpeed * 2.0);
-                float spikeCount = lerp(8.0, 24.0, sqrt(impact));
-                float spikeStrength = lerp(0.8, 2.8, impact);
-    // توزيع اتجاهي
-                float directional =
-        saturate(dot(float2(cos(angle), sin(angle)), flowDir));
+                float extraSplash =
+    splashShape * radius * 0.6 * dist;
 
-    // شكل الطرشات
-                float fingerNoise =
-frac(sin((angle * 13.7 + rr * 29.1 + noise * 17.3)) * 43758.5453);
+                float2 dir = normalize(float2(x, y));
+                if (length(float2(x, y)) < 0.001)
+                    dir = float2(0, 0);
 
-                // Base lamella (solid center)
-                float baseRadius = rr * radius;
+                int2 irregularOffset =
+    int2(x, y) +
+    int2((int) (dir.x * extraSplash),
+         (int) (dir.y * extraSplash));
 
-// Rim zone only (where fingers can start)
-                float rimMask = smoothstep(0.72, 0.96, rr);
-                float fingerShape =
-pow(saturate(abs(sin(angle * spikeCount + fingerNoise * 8.0))), 12.0);
-
-// Directional bias (stronger in travel direction)
-                float directionalBias =
-lerp(0.4, 5.5, pow(directional, 1.5));
-
-// Finger length grows outward only
-                float fingerLength =
-rimMask *
-fingerShape *
-spikeStrength *
-directionalBias *
-radius *
-lerp(4.0, 14.0, impact);
-
-// Final radius
-                float splashRadius = baseRadius + fingerLength;
-
-                int raySteps = max(1, (int) splashRadius);
-
-                for (int s = 0; s <= raySteps; s++)
+                if (absorb < 0.7)
                 {
-                    float t = (float) s / raySteps;
-                    float startRadius = radius * 0.65; // ابدأ من الحافة وليس من المركز
-                    float currentRadius = lerp(startRadius, splashRadius, t);
-                    int2 offset = int2(
-        (int) (cos(angle) * currentRadius),
-        (int) (sin(angle) * currentRadius)
-    );
+                    float2 dir2 = float2(0, 0);
 
-                    int2 p = coord + offset;
-
-                    if (p.x < 0 || p.x >= paintTextureSize ||
-        p.y < 0 || p.y >= paintTextureSize)
-                        continue;
-
-                    float alpha =
-        pow(1.0 - t, 1.4) +
-        fingerShape * rimMask * (1.0 - t) * 0.25;
-
-                    alpha *= (1.0 - rough * 0.4);
-                    alpha *= lerp(1.0, 0.65, effectiveAbsorb);
-
-                    float depositedMass = alpha;
-                    float4 accum = PaintAccumTexture[p];
-                    float storedMass = accum.a;
-                    float3 oldPigment = accum.rgb;
-
-                    float effectiveOldMass;
-                    if (paintMixRate < 0.05)
-                        effectiveOldMass = min(storedMass, 0.1);
-                    else if (paintMixRate < 0.5)
+                    if (woodMask < 0.2)
                     {
-                        effectiveOldMass = storedMass * storedMass * 2.0;
-                        effectiveOldMass = min(effectiveOldMass, 500.0);
+                        if (motionSpeed > 0.0001)
+                            dir2 = motionForPaint.xy / motionSpeed;
+
+                        streak = saturate(motionSpeed * 4.0) * 0.25;
                     }
                     else
-                        effectiveOldMass = min(storedMass, 5.0);
-
-                    float newEffectiveMass = effectiveOldMass + depositedMass;
-
-                    float3 avgPigment =
-        (effectiveOldMass * oldPigment + depositedMass * newPigment)
-        / max(newEffectiveMass, 0.001);
-
-                    float newStoredMass = storedMass + depositedMass;
-                    PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
-
-                    float spongeMask = saturate((absorb - 0.6) / 0.3);
-
-                    float3 color = avgPigment * avgPigment;
-                    float luminance = dot(color, float3(0.299, 0.587, 0.114));
-                    float3 spongeColor = lerp(color, luminance.xxx, 0.30);
-
-                    float3 displayColor = lerp(color, spongeColor, spongeMask);
-                    displayColor = clamp(displayColor, 0.0, 1.0);
-                    displayColor *= (1.0 - absorb * 0.03);
-
-                    PaintTexture[p] = float4(displayColor, 1.0);
-                }
-    // قطرات صغيرة
-                
-                if (fingerShape > 0.82 && impact > 0.45)
-                {
-                    float dropletDist = splashRadius + radius * (0.4 + noise * 1.8);
-
-                    int2 dripP = coord + int2(
-        (int) (cos(angle) * dropletDist),
-        (int) (sin(angle) * dropletDist)
-    );
-
-                    if (dripP.x >= 0 && dripP.x < paintTextureSize &&
-        dripP.y >= 0 && dripP.y < paintTextureSize)
                     {
-                        PaintTexture[dripP] = float4(paintColour.rgb, 1.0);
+                        float burst = motionSpeed * 0.6;
+                        burst *= exp(-rough * 12.0);
+                        streak = saturate(burst);
+                        streak = min(streak, 0.12);
                     }
+
+                    p = coord + irregularOffset + int2(
+        (int) (dir2.x * streak * radius),
+        (int) (dir2.y * streak * radius)
+    );
                 }
-                
+                else
+                {
+                    p = coord + irregularOffset;
+                }
+
+                if (p.x < 0 || p.x >= paintTextureSize ||
+            p.y < 0 || p.y >= paintTextureSize)
+                    continue;
+
+// اتجاه السيلان على السطح
+                float2 flowDir = float2(0, 0);
+                if (slideStrength > 0.0001)
+                {
+                    flowDir.x = dot(slideDir, canvasRight);
+                    flowDir.y = dot(slideDir, canvasUp);
+                    flowDir = normalize(flowDir);
+                }
+
+// مقدار الميلان
+                float tiltAmount = 1.0 - flatness;
+
+// تمدد البقعة حسب الميل
+                float stretch = lerp(1.0, 5.5, pow(tiltAmount, 1.7));
+// إسقاط النقطة على اتجاه السيلان
+                float alongFlow = dot(float2(x, y), flowDir);
+                float acrossFlow = dot(float2(x, y), float2(-flowDir.y, flowDir.x));
+
+// دائرة إذا أفقي، بيضاوي إذا مائل
+                float distF = sqrt(
+    (alongFlow * alongFlow) / (radius * radius * stretch * stretch) +
+    (acrossFlow * acrossFlow) / (radius * radius)
+);
+
+                float alpha;
+                // Use effectiveAbsorb for deposit shape
+                if (effectiveAbsorb > 0.8)
+                {
+                    alpha = pow(saturate(1.0 - distF), 2.5);
+                }
+                else
+                {
+                    alpha = saturate(1.0 - distF);
+                    alpha *= (1.0 - rough * distF);
+                    alpha *= (1.0 - effectiveAbsorb * 0.5);
+                }
+
+                //MIXING 
+                float depositedMass = alpha;
+                float4 accum = PaintAccumTexture[p];
+                float storedMass = accum.a;
+                float3 oldPigment = accum.rgb;
+
+                float effectiveOldMass;
+                if (paintMixRate < 0.05)
+                    effectiveOldMass = min(storedMass, 0.1);
+                else if (paintMixRate < 0.5)
+                {
+                    effectiveOldMass = storedMass * storedMass * 2.0;
+                    effectiveOldMass = min(effectiveOldMass, 500.0);
+                }
+                else
+                    effectiveOldMass = min(storedMass, 5.0);
+
+                float newEffectiveMass = effectiveOldMass + depositedMass;
+                float3 avgPigment = (effectiveOldMass * oldPigment + depositedMass * newPigment)
+                          / max(newEffectiveMass, 0.001);
+
+                float newStoredMass = storedMass + depositedMass;
+                PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
+
+                float spongeMask = saturate((absorb - 0.6) / 0.3);
+                float3 color = avgPigment * avgPigment;
+                float luminance = dot(color, float3(0.299, 0.587, 0.114));
+                float3 spongeColor = lerp(color, luminance.xxx, 0.30);
+                float3 displayColor = lerp(color, spongeColor, spongeMask);
+                displayColor = clamp(displayColor, 0.0, 1.0);
+                displayColor *= (1.0 - absorb * 0.03);
+                PaintTexture[p] = float4(displayColor, 1.0);
             }
     }
-    
     if (!didHit && ParticleStates[id.x] != 2)
     {
         float3 n = canvasNormal;
@@ -1033,18 +1016,10 @@ lerp(4.0, 14.0, impact);
         }
     }
 
+    
+
     Positions[id.x] = pos;
     Velocities[id.x] = vel;
-    if (abs(pos.x - sensorCenter.x) <= sensorExtents.x &&
-    abs(pos.y - sensorCenter.y) <= sensorExtents.y &&
-    abs(pos.z - sensorCenter.z) <= sensorExtents.z)
-{
-    InterlockedAdd(FlowResultBuffer[0], 1);
-    InterlockedAdd(FlowResultBuffer[1], (int)(vel.x * 1000.0f));
-    InterlockedAdd(FlowResultBuffer[2], (int)(vel.y * 1000.0f));
-    InterlockedAdd(FlowResultBuffer[3], (int)(vel.z * 1000.0f));
-}
-    
 }
 
 [numthreads(8, 8, 8)]
