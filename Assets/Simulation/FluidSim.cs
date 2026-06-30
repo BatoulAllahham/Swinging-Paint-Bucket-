@@ -72,6 +72,13 @@ namespace Seb.Fluid.Simulation
 
 		private ComputeBuffer bucketCountBuffer;
 		private int[] countResultData = new int[1];
+
+		[Header("Flow Tracking")]
+		public Vector3 sensorCenter;
+		public Vector3 sensorExtents = new Vector3(0.5f, 0.1f, 0.5f);
+		public float currentFlowSpeed;
+		private ComputeBuffer flowResultBuffer;
+		private int[] flowData = new int[4];
 		[Header("References")] public ComputeShader compute;
 		public Spawner3D spawner;
 
@@ -151,6 +158,7 @@ namespace Seb.Fluid.Simulation
 			sortTarget_predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
             bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
+			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
 				
@@ -168,7 +176,8 @@ namespace Seb.Fluid.Simulation
 				{ foamSortTargetBuffer, "WhiteParticlesCompacted" },
 				{ debugBuffer, "Debug" },
 				{ stateBuffer, "ParticleStates" },
-				{ sortTarget_stateBuffer, "SortTarget_ParticleStates" }
+				{ sortTarget_stateBuffer, "SortTarget_ParticleStates" },
+				{ flowResultBuffer, "FlowResultBuffer" },
 			};
 
 			// Set buffer data
@@ -298,7 +307,7 @@ namespace Seb.Fluid.Simulation
 
 			compute.SetInt("numParticles", positionBuffer.count);
 			compute.SetInt("MaxWhiteParticleCount", maxFoamParticleCount);
-
+	
 			UpdateSmoothingConstants();
 
             if (renderToTex3D)
@@ -372,6 +381,8 @@ namespace Seb.Fluid.Simulation
 			float subStepDeltaTime = frameDeltaTime / iterationsPerFrame;
 			UpdateSettings(subStepDeltaTime, frameDeltaTime);
 
+			flowData[0] = 0; flowData[1] = 0; flowData[2] = 0; flowData[3] = 0;
+			flowResultBuffer.SetData(flowData);
 			// Simulation sub-steps
 			for (int i = 0; i < iterationsPerFrame; i++)
 			{
@@ -383,6 +394,17 @@ namespace Seb.Fluid.Simulation
             bucketCountBuffer.GetData(countResultData);
             currentParticleCount = countResultData[0];
             currentBucketWeight = currentParticleCount * weightPerParticle;
+
+			flowResultBuffer.GetData(flowData);
+			if (flowData[0] > 0) // count > 0
+			{
+				Vector3 sumVel = new Vector3(flowData[1], flowData[2], flowData[3]) / 1000f;
+				currentFlowSpeed = (sumVel / flowData[0]).magnitude;
+			}
+			else
+			{
+				currentFlowSpeed = 0f;
+			}
 
 			// Foam and spray particles
 			if (foamActive)
@@ -620,6 +642,10 @@ namespace Seb.Fluid.Simulation
 			compute.SetVector("holePosition", holePosition);
 			compute.SetInt("holeOrientation", holeOrientation);
 
+			compute.SetVector("sensorCenter", bucketTransform.TransformPoint(holePosition)); // Follows the hole
+			compute.SetVector("sensorExtents", sensorExtents);
+			compute.SetBuffer(updatePositionsKernel, "FlowResultBuffer", flowResultBuffer);
+
             // CANVAS
             if (canvasCollision != null)
             {
@@ -734,11 +760,11 @@ namespace Seb.Fluid.Simulation
 		}
 
 		// Explicitly release our upgraded GraphicsBuffer safely
-		if (positionBuffer != null)
-		{
-			positionBuffer.Release();
-		}
+		if (positionBuffer != null) positionBuffer.Release();
+		
 		if (bucketCountBuffer != null) bucketCountBuffer.Release();
+
+		if (flowResultBuffer != null) flowResultBuffer.Release();
 
 		spatialHash.Release();
 	}

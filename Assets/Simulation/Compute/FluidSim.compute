@@ -45,10 +45,15 @@ const float viscosityStrength;
 const float edgeForce;
 const float edgeForceDst;
 const float3 boundsSize;
+
 RWStructuredBuffer<int> BucketParticleCount;
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
 RWStructuredBuffer<int> ParticleStates;
+
+RWStructuredBuffer<int> FlowResultBuffer; // [Count, SumX, SumY, SumZ]
+float3 sensorCenter;
+float3 sensorExtents;
 
 // CANVAS
 const float3 canvasCentre;
@@ -1030,6 +1035,15 @@ lerp(4.0, 14.0, impact);
 
     Positions[id.x] = pos;
     Velocities[id.x] = vel;
+    if (abs(pos.x - sensorCenter.x) <= sensorExtents.x &&
+    abs(pos.y - sensorCenter.y) <= sensorExtents.y &&
+    abs(pos.z - sensorCenter.z) <= sensorExtents.z)
+{
+    InterlockedAdd(FlowResultBuffer[0], 1);
+    InterlockedAdd(FlowResultBuffer[1], (int)(vel.x * 1000.0f));
+    InterlockedAdd(FlowResultBuffer[2], (int)(vel.y * 1000.0f));
+    InterlockedAdd(FlowResultBuffer[3], (int)(vel.z * 1000.0f));
+}
     
 }
 
