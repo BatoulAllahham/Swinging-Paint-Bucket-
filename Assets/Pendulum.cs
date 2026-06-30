@@ -17,7 +17,11 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float gravity = 9.81f;
     [SerializeField] float airDensity = 1.225f;
     [SerializeField] float dragCoefficient = 1.0f; // Cd, ~1.0–1.2 for a bucket shape
+    // base racket mass (without fluid) set to 1
     [SerializeField] float mass = 1.0f;
+    [Header("Dependencies")]
+    public TotalWeightManager weightManager;
+    private float baseMass=1;
 
     [Header("Objects")]
     [SerializeField] Transform hangPoint;
@@ -242,6 +246,8 @@ public class Pendulum : MonoBehaviour
  
     void Start()
     {
+        
+        mass=baseMass;
         ropeComponent = rope.GetComponent<Rope>();
         ropeLength = ropeComponent.RopeLength;
 
@@ -260,6 +266,11 @@ public class Pendulum : MonoBehaviour
         ropeLength = ropeComponent.RopeLength;
         if (!isDragging)
         {
+            // get mass for all the fluids carried at the moment in the racket from weight manager
+        if (weightManager != null)
+        {
+            mass = baseMass + weightManager.totalCombinedWeight;
+        }
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);
             thetaAngularVelo += state[0];       //θ˙new​=θ˙old​+Δθ˙
             phiAngularVelo += state[1];         //ϕ˙​new​=ϕ˙​old​+Δϕ˙​

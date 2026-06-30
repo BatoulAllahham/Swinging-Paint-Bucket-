@@ -65,6 +65,13 @@ namespace Seb.Fluid.Simulation
 		[Header("Volumetric Render Settings")] public bool renderToTex3D;
 		public int densityTextureRes;
 
+		[Header("Weight Tracking")]
+		public float weightPerParticle = 0.0001f; 
+		public int currentParticleCount;
+		public float currentBucketWeight;
+
+		private ComputeBuffer bucketCountBuffer;
+		private int[] countResultData = new int[1];
 		[Header("References")] public ComputeShader compute;
 		public Spawner3D spawner;
 
@@ -143,7 +150,7 @@ namespace Seb.Fluid.Simulation
 			sortTarget_positionBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
-
+            bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
 				
@@ -177,7 +184,7 @@ namespace Seb.Fluid.Simulation
 		compute.SetBuffer(externalForcesKernel, "Positions", positionBuffer); 
 
 			// Spatial hash kernel
-			SetBuffers(compute, spatialHashKernel, bufferNameLookup, new ComputeBuffer[]
+		SetBuffers(compute, spatialHashKernel, bufferNameLookup, new ComputeBuffer[]
 			{
 				spatialHash.SpatialKeys,
 				spatialHash.SpatialOffsets,
@@ -263,6 +270,8 @@ namespace Seb.Fluid.Simulation
 				spatialHash.SpatialKeys,
 				spatialHash.SpatialOffsets,
 			});
+		int updatePosKernel = compute.FindKernel("UpdatePositions");
+		compute.SetBuffer(updatePosKernel, "BucketParticleCount", bucketCountBuffer);
 
 			// Foam update kernel
 			SetBuffers(compute, foamUpdateKernel, bufferNameLookup, new ComputeBuffer[]
@@ -368,7 +377,12 @@ namespace Seb.Fluid.Simulation
 			{
 				simTimer += subStepDeltaTime;
 				RunSimulationStep();
+				
+
 			}
+            bucketCountBuffer.GetData(countResultData);
+            currentParticleCount = countResultData[0];
+            currentBucketWeight = currentParticleCount * weightPerParticle;
 
 			// Foam and spray particles
 			if (foamActive)
@@ -411,6 +425,8 @@ namespace Seb.Fluid.Simulation
 			Dispatch(compute, positionBuffer.count, kernelIndex: densityKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
 			if (viscosityStrength != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
+			countResultData[0] = 0;
+            bucketCountBuffer.SetData(countResultData);
 			Dispatch(compute, positionBuffer.count, kernelIndex: updatePositionsKernel);
 		}
 
@@ -673,6 +689,7 @@ namespace Seb.Fluid.Simulation
 			foamCountBuffer.SetData(new uint[foamCountBuffer.count]);
 			stateBuffer.SetData(new int[positionBuffer.count]);
 			simTimer = 0;
+			bucketCountBuffer.SetData(countResultData);
 		}
 
 		void HandleInput()
@@ -721,6 +738,7 @@ namespace Seb.Fluid.Simulation
 		{
 			positionBuffer.Release();
 		}
+		if (bucketCountBuffer != null) bucketCountBuffer.Release();
 
 		spatialHash.Release();
 	}

@@ -45,7 +45,7 @@ const float viscosityStrength;
 const float edgeForce;
 const float edgeForceDst;
 const float3 boundsSize;
-
+RWStructuredBuffer<int> BucketParticleCount;
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
 RWStructuredBuffer<int> ParticleStates;
@@ -581,6 +581,12 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     float3 pos = prevPos + vel * deltaTime;
 
     ResolveCollisions(id.x, pos, vel, collisionDamping);
+    
+    // count the number of particles inside the bucket
+    if (ParticleStates[id.x] == 0) 
+    {
+        InterlockedAdd(BucketParticleCount[0], 1);
+    }
 
     // CANVAS
     const float particleRadius = smoothingRadius * 0.5;
@@ -707,6 +713,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         Positions[id.x] = pos;
         Velocities[id.x] = vel;
+
         return;
     }
     
@@ -1023,6 +1030,7 @@ lerp(4.0, 14.0, impact);
 
     Positions[id.x] = pos;
     Velocities[id.x] = vel;
+    
 }
 
 [numthreads(8, 8, 8)]
