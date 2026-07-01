@@ -77,6 +77,8 @@ RWTexture2D<float4> PaintAccumTexture;
 const float paintFlowRate;
 const float paintAbsorptionResistance;
 const float paintSpread;
+// THICKNESS
+const float paintLayerThickness; // how much each deposit raises the surface height (0=flat, varies by paint type)
 
 const float2 interactionInputPoint;
 const float interactionInputStrength;
@@ -594,7 +596,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     
     if (ParticleStates[id.x] == 2)
     {
-        
         float3 n = canvasNormal;
         if (dot(n, float3(0, 1, 0)) < 0)
             n = -n;
@@ -603,21 +604,19 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float rough = surfaceParams.y;
         float flatness = abs(dot(n, float3(0, 1, 0)));
 
-    // Project back onto surface
+        // Project back onto surface
         float dist = dot(pos - canvasCentre, n);
         pos = pos - n * (dist - particleRadius);
 
- 
-    // glass(absorb=0) + anything       → 0.0  never absorbed
-    // sponge(absorb=1) + watercolor(resistance=0)  → 1.0  stops instantly  
-    // sponge(absorb=1) + wallpaint(resistance=0.9) → 0.1  slides a little
+        // glass(absorb=0) + anything       → 0.0  never absorbed
+        // sponge(absorb=1) + watercolor(resistance=0)  → 1.0  stops instantly
+        // sponge(absorb=1) + wallpaint(resistance=0.9) → 0.1  slides a little
         float effectiveAbsorb = saturate(absorb * (1.0 - paintAbsorptionResistance));
 
-    // Viscous drag: high viscosity paint resists moving regardless of surface
+        // Viscous drag: high viscosity paint resists moving regardless of surface
         float viscousDrag = 1.0 - paintFlowRate;
 
-        // Friction kills velocity each frame
-        // Surface roughness + absorption (absorbed paint cant slide) + viscosity
+        // Friction: surface roughness + absorption + viscosity (25bfa76)
         float friction = rough * 0.8 + effectiveAbsorb * 1.2 + viscousDrag * 0.6;
         vel *= max(0.0, 1.0 - friction * deltaTime);
 
@@ -630,13 +629,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             if (slideStrength > 0.0001)
                 slideForce /= slideStrength;
 
-        // Gravity pulls paint down; viscosity resists
-        // wallpaint: 0.05 * (1-0) = 0.05 small but nonzero on glass
-        // watercolor on canvas: 1.0 * (1-0.45*0.9) = 0.595 moderate
             float slideAccel = paintFlowRate * (1.0 - effectiveAbsorb * 0.8);
             vel += slideForce * slideStrength * slideAccel * deltaTime;
 
-        // Terminal speed from physics: v ∝ flowRate / (1 + viscosity + absorption)
             float maxSpeed = paintFlowRate / (1.0 + viscousDrag * 4.0 + effectiveAbsorb * 3.0) * 0.4;
             float spd = length(vel);
             if (spd > maxSpeed)
@@ -645,7 +640,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         else
             vel = float3(0, 0, 0);
 
-        // remove when fully stopped
+        // remove when fully stopped (25bfa76)
         if (length(vel) < 0.00005 && flatness > 0.98)
         {
             pos = float3(0, -1000, 0);
@@ -663,16 +658,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         {
             float uvX = 1.0 - (u / canvasHalfSize.x + 1.0) * 0.5;
             float uvY = 1.0 - (v / canvasHalfSize.y + 1.0) * 0.5;
-            int2 coord = int2((int) (uvX * paintTextureSize), (int) (uvY * paintTextureSize));
+            int2 coord = int2((int)(uvX * paintTextureSize), (int)(uvY * paintTextureSize));
 
-
-            // Trail radius: small for viscous/absorbed, larger for watery
-            //int radius = max(1, (int) (lerp(1, 5, paintFlowRate) * paintSpread));
-            //int radius = max(2, (int) (lerp(3, 5, 1.0 - paintFlowRate) * paintSpread * lerp(2.0, 1.0, paintFlowRate)));
             int radius = max(2, (int) lerp(4, 2, paintFlowRate));
-            
-            // Trail alpha: weaker for absorbed paint, stronger for flowing
-            //float trailAlpha = slideSpeed * (1.0 - effectiveAbsorb) * 0.15;
             float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
 
             float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
@@ -695,12 +683,14 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                     PaintAccumTexture[p] = float4(avgPig, newMass);
 
                     float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
-                    PaintTexture[p] = float4(color, 1.0);
+                    // THICKNESS: trail accumulates height instead of setting alpha=1.0 (avoids tessellation spike)
+                    // OLD (25bfa76): PaintTexture[p] = float4(color, 1.0);
+                    float oldTrailThick = PaintTexture[p].a;
+                    PaintTexture[p] = float4(color, min(oldTrailThick + alpha * paintLayerThickness * 0.3, 1.0));
                 }
         }
         else
         {
-        // ouside canvas bounds remove it
             pos = float3(0, -1000, 0);
             vel = float3(0, 0, 0);
         }
@@ -936,7 +926,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float tiltAmount = 1.0 - flatness;
 
 // تمدد البقعة حسب الميل
-                float stretch = lerp(1.0, 5.5, pow(tiltAmount, 1.7));
+                float stretch = lerp(1.0, 5.5, pow(max(0.0, tiltAmount), 1.7));
 // إسقاط النقطة على اتجاه السيلان
                 float alongFlow = dot(float2(x, y), flowDir);
                 float acrossFlow = dot(float2(x, y), float2(-flowDir.y, flowDir.x));
@@ -947,18 +937,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     (acrossFlow * acrossFlow) / (radius * radius)
 );
 
-                float alpha;
-                // Use effectiveAbsorb for deposit shape
-                if (effectiveAbsorb > 0.8)
-                {
-                    alpha = pow(saturate(1.0 - distF), 2.5);
-                }
-                else
-                {
-                    alpha = saturate(1.0 - distF);
-                    alpha *= (1.0 - rough * distF);
-                    alpha *= (1.0 - effectiveAbsorb * 0.5);
-                }
+                float alpha = saturate(1.0 - distF);
+                alpha *= (1.0 - rough * distF);
+                alpha *= (1.0 - effectiveAbsorb * 0.5);
 
                 //MIXING 
                 float depositedMass = alpha;
@@ -991,7 +972,14 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float3 displayColor = lerp(color, spongeColor, spongeMask);
                 displayColor = clamp(displayColor, 0.0, 1.0);
                 displayColor *= (1.0 - absorb * 0.03);
-                PaintTexture[p] = float4(displayColor, 1.0);
+                // THICKNESS: accumulate height in alpha; absorbed surfaces build less height
+                float oldDepThick = PaintTexture[p].a;
+                float thickDeposit = depositedMass * paintLayerThickness * (1.0 - effectiveAbsorb * 0.8);
+                // Floor: ensures every pixel inside the splat shows at full hasPaint regardless of absorption.
+                // Without this, sponge+watercolor edge pixels get thickDeposit~0.000012 → hasPaint=0.36 → faded ring.
+                thickDeposit = max(thickDeposit, depositedMass * 0.01);
+                // OLD: PaintTexture[p] = float4(displayColor, 1.0);
+                PaintTexture[p] = float4(displayColor, min(oldDepThick + thickDeposit, 1.0));
             }
     }
     if (!didHit && ParticleStates[id.x] != 2)

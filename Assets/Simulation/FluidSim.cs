@@ -332,6 +332,12 @@ namespace Seb.Fluid.Simulation
                 paintTexture.enableRandomWrite = true;
                 paintTexture.Create();
 
+                // Clear to white canvas (alpha=0 means no paint thickness yet)
+                var prevRT = RenderTexture.active;
+                RenderTexture.active = paintTexture;
+                GL.Clear(false, true, new Color(1f, 1f, 1f, 0f));
+                RenderTexture.active = prevRT;
+
                 if (canvasMaterial != null)
                     canvasMaterial.mainTexture = paintTexture;
             }
@@ -606,7 +612,21 @@ namespace Seb.Fluid.Simulation
             compute.SetFloat("paintAbsorptionResistance", paintAbsorptionResistance);
             compute.SetFloat("paintSpread", paintSpread);
 
-           
+            // THICKNESS: how much each deposited unit raises the surface height (0=no bump, higher=thicker paint)
+            float paintLayerThickness;
+            switch (paintType)
+            {
+                // OLD (saturated alpha too quickly — left no room to see height vary):
+                // case PaintType.Watercolor: paintLayerThickness = 0.04f; break;
+                // case PaintType.Acrylic:    paintLayerThickness = 0.15f; break;
+                // case PaintType.WallPaint:  paintLayerThickness = 0.35f; break;
+                // THICKNESS: ~3x smaller than original so edges get visible height without center saturating instantly
+                case PaintType.Watercolor: paintLayerThickness = 0.012f; break;
+                case PaintType.Acrylic:    paintLayerThickness = 0.050f; break;
+                case PaintType.WallPaint:  paintLayerThickness = 0.110f; break;
+                default:                   paintLayerThickness = 0.012f; break;
+            }
+            compute.SetFloat("paintLayerThickness", paintLayerThickness);
         }
 
         void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
@@ -754,19 +774,22 @@ namespace Seb.Fluid.Simulation
 // REPLACE YOUR ONDESTROY METHOD WITH THIS:
 	void OnDestroy()
 	{
-		foreach (var kvp in bufferNameLookup)
+		if (bufferNameLookup != null)
 		{
-			Release(kvp.Key);
+			foreach (var kvp in bufferNameLookup)
+			{
+				Release(kvp.Key);
+			}
 		}
 
 		// Explicitly release our upgraded GraphicsBuffer safely
 		if (positionBuffer != null) positionBuffer.Release();
-		
+
 		if (bucketCountBuffer != null) bucketCountBuffer.Release();
 
 		if (flowResultBuffer != null) flowResultBuffer.Release();
 
-		spatialHash.Release();
+		if (spatialHash != null) spatialHash.Release();
 	}
 
 

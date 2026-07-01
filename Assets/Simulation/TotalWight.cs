@@ -8,7 +8,7 @@ public class TotalWeightManager : MonoBehaviour
     void Start()
     {
         // Find every bucket in the scene automatically
-        allBuckets = FindObjectsOfType<Seb.Fluid.Simulation.FluidSim>();
+        allBuckets = FindObjectsByType<Seb.Fluid.Simulation.FluidSim>(FindObjectsSortMode.None);
     }
 
     void Update()
