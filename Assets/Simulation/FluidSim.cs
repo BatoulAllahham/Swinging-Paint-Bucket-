@@ -11,12 +11,12 @@ namespace Seb.Fluid.Simulation
 	public class FluidSim : MonoBehaviour
 	{
 		public event Action<FluidSim> SimulationInitCompleted;
-        [Header("Moving Container References")]
-         public Transform bucketTransform;
+		[Header("Moving Container References")]
+		public Transform bucketTransform;
 
-        // CANVAS
-        [Header("Canvas Collision")]
-        public CanvasCollisionData canvasCollision;
+		// CANVAS
+		[Header("Canvas Collision")]
+		public CanvasCollisionData canvasCollision;
 		// UV
 		[Header("Paint Texture")]
 		public int paintTextureResolution = 512;
@@ -24,11 +24,11 @@ namespace Seb.Fluid.Simulation
 		public Color paintColour = Color.blue; // colour this bucket's particles paint onto the canvas
 		RenderTexture paintTexture;
 
-        // MIXING
-        RenderTexture paintAccumTexture;
-        static RenderTexture sharedPaintAccumTexture; // shared across all buckets
+		// MIXING
+		RenderTexture paintAccumTexture;
+		static RenderTexture sharedPaintAccumTexture; // shared across all buckets
 
-        [Header("Time Step")] public float normalTimeScale = 1;
+		[Header("Time Step")] public float normalTimeScale = 1;
 		public float slowTimeScale = 0.1f;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
 		public int iterationsPerFrame = 3;
@@ -43,9 +43,9 @@ namespace Seb.Fluid.Simulation
 		public Transform floorTransform; // This will hold the actual Floor object
 		[Range(0, 1)] public float collisionDamping = 0.95f;
 		[Header("Hole Settings")]
-		public Vector3 holePosition = Vector3.zero; 
-	    public int holeOrientation = 0;
-		 [Range(0.0f, 0.5f)]
+		public Vector3 holePosition = Vector3.zero;
+		public int holeOrientation = 0;
+		[Range(0.0f, 0.5f)]
 		public float holeSize = 0.1f;
 		[HideInInspector] public bool foamActive;
 		[HideInInspector] public int maxFoamParticleCount = 1000;
@@ -58,15 +58,15 @@ namespace Seb.Fluid.Simulation
 		[HideInInspector] public int sprayClassifyMaxNeighbours = 5;
 		[HideInInspector] public int bubbleClassifyMinNeighbours = 15;
 		[HideInInspector] public float bubbleScale = 0.5f;
-		[HideInInspector]public float bubbleChangeScaleSpeed = 7;
+		[HideInInspector] public float bubbleChangeScaleSpeed = 7;
 
-		
+
 
 		[Header("Volumetric Render Settings")] public bool renderToTex3D;
 		public int densityTextureRes;
 
 		[Header("Weight Tracking")]
-		public float weightPerParticle = 0.0001f; 
+		public float weightPerParticle = 0.0001f;
 		public int currentParticleCount;
 		public float currentBucketWeight;
 
@@ -97,7 +97,7 @@ namespace Seb.Fluid.Simulation
 
 
 		public ComputeBuffer stateBuffer;
-		public ComputeBuffer sortTarget_stateBuffer; 
+		public ComputeBuffer sortTarget_stateBuffer;
 		ComputeBuffer sortTarget_positionBuffer;
 		ComputeBuffer sortTarget_velocityBuffer;
 		ComputeBuffer sortTarget_predictedPositionsBuffer;
@@ -126,6 +126,44 @@ namespace Seb.Fluid.Simulation
 		Spawner3D.SpawnData spawnData;
 		Dictionary<ComputeBuffer, string> bufferNameLookup;
 
+		// Tracks the last applied paint type so OnValidate only resets SPH fields when
+		// paintType actually changes, not when the user edits any other Inspector field.
+		[NonSerialized] PaintType _lastAppliedPaintType = (PaintType)(-1);
+
+		void OnValidate()
+		{
+			if (paintType == _lastAppliedPaintType) return;
+			_lastAppliedPaintType = paintType;
+
+			switch (paintType)
+			{
+				case PaintType.Watercolor:
+					smoothingRadius = 0.2f;
+					targetDensity = 10000f;
+					pressureMultiplier = 10f;
+					nearPressureMultiplier = 5f;
+					viscosityStrength = 0.0f;
+					holeSize = 0.011f;
+					break;
+				case PaintType.WallPaint:
+					smoothingRadius = 0.2f;
+					targetDensity = 10000f;
+					pressureMultiplier = 10f;
+					nearPressureMultiplier = 5f;
+					viscosityStrength = 0.0004f;
+					holeSize = 0.011f;
+					break;
+				case PaintType.Acrylic:
+					smoothingRadius = 0.2f;
+					targetDensity = 10000f;
+					pressureMultiplier = 10f;
+					nearPressureMultiplier = 5f;
+					viscosityStrength = 0.0002f;
+					holeSize = 0.011f;
+					break;
+			}
+		}
+
 		void Start()
 		{
 			Debug.Log("Controls: Space = Play/Pause, Q = SlowMode, R = Reset");
@@ -142,7 +180,7 @@ namespace Seb.Fluid.Simulation
 			int numParticles = spawnData.points.Length;
 
 			spatialHash = new SpatialHash(numParticles);
-			
+
 			// Create buffers
 			positionBuffer = new GraphicsBuffer(GraphicsBuffer.Target.Structured, numParticles, sizeof(float) * 3);
 			predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
@@ -157,11 +195,11 @@ namespace Seb.Fluid.Simulation
 			sortTarget_positionBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_predictedPositionsBuffer = CreateStructuredBuffer<float3>(numParticles);
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
-            bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
+			bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
-				
+
 				{ predictedPositionsBuffer, "PredictedPositions" },
 				{ velocityBuffer, "Velocities" },
 				{ densityBuffer, "Densities" },
@@ -184,26 +222,26 @@ namespace Seb.Fluid.Simulation
 			SetInitialBufferData(spawnData);
 
 			// External forces kernel
-				SetBuffers(compute, externalForcesKernel, bufferNameLookup, new ComputeBuffer[]
-		{
+			SetBuffers(compute, externalForcesKernel, bufferNameLookup, new ComputeBuffer[]
+	{
 			predictedPositionsBuffer,
 			velocityBuffer,
-		});
-		// Manually bind GraphicsBuffer for the shader graph
-		compute.SetBuffer(externalForcesKernel, "Positions", positionBuffer); 
+	});
+			// Manually bind GraphicsBuffer for the shader graph
+			compute.SetBuffer(externalForcesKernel, "Positions", positionBuffer);
 
 			// Spatial hash kernel
-		SetBuffers(compute, spatialHashKernel, bufferNameLookup, new ComputeBuffer[]
-			{
+			SetBuffers(compute, spatialHashKernel, bufferNameLookup, new ComputeBuffer[]
+				{
 				spatialHash.SpatialKeys,
 				spatialHash.SpatialOffsets,
 				predictedPositionsBuffer,
 				spatialHash.SpatialIndices
-			});
+				});
 
 			// Reorder kernel
-		SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
-		{
+			SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
+			{
 			sortTarget_positionBuffer,
 			predictedPositionsBuffer,
 			sortTarget_predictedPositionsBuffer,
@@ -211,12 +249,12 @@ namespace Seb.Fluid.Simulation
 			sortTarget_velocityBuffer,
 			spatialHash.SpatialIndices,
 			stateBuffer, sortTarget_stateBuffer
-		});
-		 // Manually bind GraphicsBuffer for the shader graph
-		compute.SetBuffer(reorderKernel, "Positions", positionBuffer);
+			});
+			// Manually bind GraphicsBuffer for the shader graph
+			compute.SetBuffer(reorderKernel, "Positions", positionBuffer);
 			// Reorder copyback kernel
-		SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
-		{
+			SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
+			{
 			sortTarget_positionBuffer,
 			predictedPositionsBuffer,
 			sortTarget_predictedPositionsBuffer,
@@ -224,9 +262,9 @@ namespace Seb.Fluid.Simulation
 			sortTarget_velocityBuffer,
 			spatialHash.SpatialIndices,
 			stateBuffer, sortTarget_stateBuffer
-		});
-		// Manually bind GraphicsBuffer for the shader graph
-		compute.SetBuffer(reorderCopybackKernel, "Positions", positionBuffer); 
+			});
+			// Manually bind GraphicsBuffer for the shader graph
+			compute.SetBuffer(reorderCopybackKernel, "Positions", positionBuffer);
 
 			// Density kernel
 			SetBuffers(compute, densityKernel, bufferNameLookup, new ComputeBuffer[]
@@ -259,17 +297,17 @@ namespace Seb.Fluid.Simulation
 				velocityBuffer,
 				spatialHash.SpatialKeys,
 				spatialHash.SpatialOffsets,
-                stateBuffer
-            });
+				stateBuffer
+			});
 
 			// Update positions kernel
-		SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
-		{
+			SetBuffers(compute, updatePositionsKernel, bufferNameLookup, new ComputeBuffer[]
+			{
 			velocityBuffer,
 			stateBuffer
-		});
-		 // Manually bind GraphicsBuffer for the shader grapgh
-		compute.SetBuffer(updatePositionsKernel, "Positions", positionBuffer);
+			});
+			// Manually bind GraphicsBuffer for the shader grapgh
+			compute.SetBuffer(updatePositionsKernel, "Positions", positionBuffer);
 
 			// Render to 3d tex kernel
 			SetBuffers(compute, renderKernel, bufferNameLookup, new ComputeBuffer[]
@@ -279,8 +317,8 @@ namespace Seb.Fluid.Simulation
 				spatialHash.SpatialKeys,
 				spatialHash.SpatialOffsets,
 			});
-		int updatePosKernel = compute.FindKernel("UpdatePositions");
-		compute.SetBuffer(updatePosKernel, "BucketParticleCount", bucketCountBuffer);
+			int updatePosKernel = compute.FindKernel("UpdatePositions");
+			compute.SetBuffer(updatePosKernel, "BucketParticleCount", bucketCountBuffer);
 
 			// Foam update kernel
 			SetBuffers(compute, foamUpdateKernel, bufferNameLookup, new ComputeBuffer[]
@@ -307,60 +345,60 @@ namespace Seb.Fluid.Simulation
 
 			compute.SetInt("numParticles", positionBuffer.count);
 			compute.SetInt("MaxWhiteParticleCount", maxFoamParticleCount);
-	
+
 			UpdateSmoothingConstants();
 
-            if (renderToTex3D)
+			if (renderToTex3D)
 			{
 				RunSimulationFrame(0);
 			}
-            // UV
-            SimulationInitCompleted?.Invoke(this);
+			// UV
+			SimulationInitCompleted?.Invoke(this);
 
-            // CANVAS IS ALWAYS SHARED: if another bucket has already created a paint
-            // texture on this canvasMaterial, reuse it instead of making a new one.
-            // This is what makes multiple buckets splatter onto the same canvas
-            // (different colours can overlap/mix). All buckets that should share a
-            // canvas must be assigned the same canvasMaterial asset in the Inspector.
-            if (canvasMaterial != null && canvasMaterial.mainTexture is RenderTexture existingPaintTexture)
-            {
-                paintTexture = existingPaintTexture;
-            }
-            else
-            {
-                paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
-                paintTexture.enableRandomWrite = true;
-                paintTexture.Create();
+			// CANVAS IS ALWAYS SHARED: if another bucket has already created a paint
+			// texture on this canvasMaterial, reuse it instead of making a new one.
+			// This is what makes multiple buckets splatter onto the same canvas
+			// (different colours can overlap/mix). All buckets that should share a
+			// canvas must be assigned the same canvasMaterial asset in the Inspector.
+			if (canvasMaterial != null && canvasMaterial.mainTexture is RenderTexture existingPaintTexture)
+			{
+				paintTexture = existingPaintTexture;
+			}
+			else
+			{
+				paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
+				paintTexture.enableRandomWrite = true;
+				paintTexture.Create();
 
-                // Clear to white canvas (alpha=0 means no paint thickness yet)
-                var prevRT = RenderTexture.active;
-                RenderTexture.active = paintTexture;
-                GL.Clear(false, true, new Color(1f, 1f, 1f, 0f));
-                RenderTexture.active = prevRT;
+				// Clear to white canvas (alpha=0 means no paint thickness yet)
+				var prevRT = RenderTexture.active;
+				RenderTexture.active = paintTexture;
+				GL.Clear(false, true, new Color(1f, 1f, 1f, 0f));
+				RenderTexture.active = prevRT;
 
-                if (canvasMaterial != null)
-                    canvasMaterial.mainTexture = paintTexture;
-            }
+				if (canvasMaterial != null)
+					canvasMaterial.mainTexture = paintTexture;
+			}
 
-            compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
-            compute.SetInt("paintTextureSize", paintTextureResolution);
+			compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+			compute.SetInt("paintTextureSize", paintTextureResolution);
 
-            // MIXING
-            // Share accum texture across all buckets (same logic as paintTexture)
-            if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
-            {
-                paintAccumTexture = sharedPaintAccumTexture;
-            }
-            else
-            {
-                paintAccumTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGBFloat);
-                paintAccumTexture.enableRandomWrite = true;
-                paintAccumTexture.Create();
-                sharedPaintAccumTexture = paintAccumTexture;
-            }
+			// MIXING
+			// Share accum texture across all buckets (same logic as paintTexture)
+			if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
+			{
+				paintAccumTexture = sharedPaintAccumTexture;
+			}
+			else
+			{
+				paintAccumTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGBFloat);
+				paintAccumTexture.enableRandomWrite = true;
+				paintAccumTexture.Create();
+				sharedPaintAccumTexture = paintAccumTexture;
+			}
 
-            compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
-        }
+			compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
+		}
 
 		void Update()
 		{
@@ -379,8 +417,8 @@ namespace Seb.Fluid.Simulation
 			}
 
 			HandleInput();
-            Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
-        }
+			Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
+		}
 
 		void RunSimulationFrame(float frameDeltaTime)
 		{
@@ -394,12 +432,12 @@ namespace Seb.Fluid.Simulation
 			{
 				simTimer += subStepDeltaTime;
 				RunSimulationStep();
-				
+
 
 			}
-            bucketCountBuffer.GetData(countResultData);
-            currentParticleCount = countResultData[0];
-            currentBucketWeight = currentParticleCount * weightPerParticle;
+			bucketCountBuffer.GetData(countResultData);
+			currentParticleCount = countResultData[0];
+			currentBucketWeight = currentParticleCount * weightPerParticle;
 
 			flowResultBuffer.GetData(flowData);
 			if (flowData[0] > 0) // count > 0
@@ -436,7 +474,7 @@ namespace Seb.Fluid.Simulation
 			//Debug.Log(w + " " + h + "  " + d);
 			compute.SetTexture(renderKernel, "DensityMap", DensityMap);
 			compute.SetInts("densityMapSize", DensityMap.width, DensityMap.height, DensityMap.volumeDepth);
-		
+
 			Dispatch(compute, DensityMap.width, DensityMap.height, DensityMap.volumeDepth, renderKernel);
 		}
 
@@ -446,7 +484,7 @@ namespace Seb.Fluid.Simulation
 
 			Dispatch(compute, positionBuffer.count, kernelIndex: spatialHashKernel);
 			spatialHash.Run();
-			
+
 			Dispatch(compute, positionBuffer.count, kernelIndex: reorderKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: reorderCopybackKernel);
 
@@ -454,7 +492,7 @@ namespace Seb.Fluid.Simulation
 			Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
 			if (viscosityStrength != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
 			countResultData[0] = 0;
-            bucketCountBuffer.SetData(countResultData);
+			bucketCountBuffer.SetData(countResultData);
 			Dispatch(compute, positionBuffer.count, kernelIndex: updatePositionsKernel);
 		}
 
@@ -471,194 +509,196 @@ namespace Seb.Fluid.Simulation
 			compute.SetFloat("K_SpikyPow2Grad", spikyPow2Grad);
 			compute.SetFloat("K_SpikyPow3Grad", spikyPow3Grad);
 		}
-        public enum SurfaceType
-        {
-            Glass,
-            Plastic,
-            Sponge,
-            Wood,
-            Canvas
-        }
+		public enum SurfaceType
+		{
+			Glass,
+			Plastic,
+			Sponge,
+			Wood,
+			Canvas
+		}
 
-        public SurfaceType surfaceType;
+		public SurfaceType surfaceType;
 
-        Vector3 GetSurfaceParams()
-        {
-            switch (surfaceType)
-            {
-                case SurfaceType.Glass:
-                    return new Vector3(
-                        1.4f,   // bounce عالي
-                        0.02f,  // rough قليل
-                        0.0f    // لا امتصاص
-                    );
+		Vector3 GetSurfaceParams()
+		{
+			switch (surfaceType)
+			{
+				case SurfaceType.Glass:
+					return new Vector3(
+						1.4f,   // bounce عالي
+						0.02f,  // rough قليل
+						0.0f    // لا امتصاص
+					);
 
-                case SurfaceType.Wood:
-                    return new Vector3(
-                        0.55f,
-                        0.45f,
-                        0.1f
-                    );
+				case SurfaceType.Wood:
+					return new Vector3(
+						0.55f,
+						0.45f,
+						0.1f
+					);
 
-                case SurfaceType.Sponge:
-                    return new Vector3(
-                        0.15f,
-                        0.9f,
-                        1.0f
-                    );
+				case SurfaceType.Sponge:
+					return new Vector3(
+						0.15f,
+						0.9f,
+						1.0f
+					);
 
-                case SurfaceType.Plastic:
-                    return new Vector3(
-                        0.95f,
-                        0.15f,
-                        0.0f
-                    );
+				case SurfaceType.Plastic:
+					return new Vector3(
+						0.95f,
+						0.15f,
+						0.0f
+					);
 
-                case SurfaceType.Canvas:
-                    return new Vector3(0.35f, 0.65f, 0.45f);
-                    
+				case SurfaceType.Canvas:
+					return new Vector3(0.35f, 0.65f, 0.45f);
 
-            }
 
-            return Vector3.zero;
-        }
+			}
+
+			return Vector3.zero;
+		}
 
 		// PAINT TYPE
-        public enum PaintType { Watercolor, Acrylic, WallPaint }
+		public enum PaintType { Watercolor, Acrylic, WallPaint }
 
-        [Header("Paint Type")]
-        public PaintType paintType = PaintType.Watercolor;
+		[Header("Paint Type")]
+		public PaintType paintType = PaintType.Watercolor;
 
-        void SetPaintTypeParams()
-        {
-            float paintViscosity, paintDensityFactor, mixRate;
+		void SetPaintTypeParams()
+		{
+			float paintViscosity, paintDensityFactor, mixRate;
 
-            switch (paintType)
-            {
-                case PaintType.Watercolor:
-                    paintViscosity = 0.0f;
-                    paintDensityFactor = 0.0f;
-                    mixRate = 1.0f;
-                    break;
-                case PaintType.Acrylic:
-                    paintViscosity = 0.4f;
-                    paintDensityFactor = 0.5f;
-                    mixRate = 0.4f;
-                    break;
-                case PaintType.WallPaint:
-                    paintViscosity = 1.0f;
-                    paintDensityFactor = 1.0f;
-                    mixRate = 0.0f;
-                    break;
-                default:
-                    paintViscosity = 0.0f;
-                    paintDensityFactor = 0.0f;
-                    mixRate = 1.0f;
-                    break;
-            }
+			switch (paintType)
+			{
+				case PaintType.Watercolor:
+					paintViscosity = 0.0f;
+					paintDensityFactor = 0.0f;
+					mixRate = 1.0f;
+					break;
+				case PaintType.Acrylic:
+					paintViscosity = 0.4f;
+					paintDensityFactor = 0.5f;
+					mixRate = 0.0f;
+					break;
+				case PaintType.WallPaint:
+					paintViscosity = 1.0f;
+					paintDensityFactor = 1.0f;
+					mixRate = 0.0f;
+					break;
+				default:
+					paintViscosity = 0.0f;
+					paintDensityFactor = 0.0f;
+					mixRate = 1.0f;
+					break;
+			}
 
-            compute.SetFloat("paintViscosity", paintViscosity);
-            compute.SetFloat("paintDensityFactor", paintDensityFactor);
-            compute.SetFloat("paintMixRate", mixRate);
+			compute.SetFloat("paintViscosity", paintViscosity);
+			compute.SetFloat("paintDensityFactor", paintDensityFactor);
+			compute.SetFloat("paintMixRate", mixRate);
 
-            float flowRate;
-            switch (paintType)
-            {
-                case PaintType.Watercolor: 
-					flowRate = 1.0f; 
+			float flowRate;
+			switch (paintType)
+			{
+				case PaintType.Watercolor:
+					flowRate = 1.0f;
 					break; // flows freely
-                case PaintType.Acrylic: 
+				case PaintType.Acrylic:
 					flowRate = 0.3f;
 					break; // flows slowly  
-                case PaintType.WallPaint: 
-					flowRate = 0.05f; 
+				case PaintType.WallPaint:
+					flowRate = 0.05f;
 					break; // barely flows
-                default: 
-					flowRate = 1.0f; 
+				default:
+					flowRate = 1.0f;
 					break;
-            }
+			}
 
-            compute.SetFloat("paintFlowRate", flowRate);
+			compute.SetFloat("paintFlowRate", flowRate);
 
 
-            // How fast paint gets absorbed INTO the surface (separate from surface absorb param)
-            // High = paint disappears quickly into surface
-            // Low = paint sits on surface
-            float paintAbsorptionResistance;
+			// How fast paint gets absorbed INTO the surface (separate from surface absorb param)
+			// High = paint disappears quickly into surface
+			// Low = paint sits on surface
+			float paintAbsorptionResistance;
 
-            // How much paint spreads on contact
-            float paintSpread;
+			// How much paint spreads on contact
+			float paintSpread;
 
-            switch (paintType)
-            {
-                case PaintType.Watercolor:
-                    paintAbsorptionResistance = 0.0f; // absorbed easily
-                    paintSpread = 1.0f;               // spreads wide
-                    break;
-                case PaintType.Acrylic:
-                    paintAbsorptionResistance = 0.5f; // partially resists
-                    paintSpread = 0.6f;               // medium spread
-                    break;
-                case PaintType.WallPaint:
-                    paintAbsorptionResistance = 0.9f; // resists absorption
-                    paintSpread = 0.3f;               // tight deposit
-                    break;
-                default:
-                    paintAbsorptionResistance = 0.0f;
-                    paintSpread = 1.0f;
-                    break;
-            }
+			switch (paintType)
+			{
+				case PaintType.Watercolor:
+					paintAbsorptionResistance = 0.0f; // absorbed easily
+					paintSpread = 1.0f;               // spreads wide
+					break;
+				case PaintType.Acrylic:
+					paintAbsorptionResistance = 0.5f; // partially resists
+					paintSpread = 0.6f;               // medium spread
+					break;
+				case PaintType.WallPaint:
+					paintAbsorptionResistance = 0.9f; // resists absorption
+					paintSpread = 0.3f;               // tight deposit
+					break;
+				default:
+					paintAbsorptionResistance = 0.0f;
+					paintSpread = 1.0f;
+					break;
+			}
 
-            compute.SetFloat("paintAbsorptionResistance", paintAbsorptionResistance);
-            compute.SetFloat("paintSpread", paintSpread);
+			compute.SetFloat("paintAbsorptionResistance", paintAbsorptionResistance);
+			compute.SetFloat("paintSpread", paintSpread);
 
-            // THICKNESS: how much each deposited unit raises the surface height (0=no bump, higher=thicker paint)
-            float paintLayerThickness;
-            switch (paintType)
-            {
-                // OLD (saturated alpha too quickly — left no room to see height vary):
-                // case PaintType.Watercolor: paintLayerThickness = 0.04f; break;
-                // case PaintType.Acrylic:    paintLayerThickness = 0.15f; break;
-                // case PaintType.WallPaint:  paintLayerThickness = 0.35f; break;
-                // THICKNESS: ~3x smaller than original so edges get visible height without center saturating instantly
-                case PaintType.Watercolor: paintLayerThickness = 0.012f; break;
-                case PaintType.Acrylic:    paintLayerThickness = 0.050f; break;
-                case PaintType.WallPaint:  paintLayerThickness = 0.110f; break;
-                default:                   paintLayerThickness = 0.012f; break;
-            }
-            compute.SetFloat("paintLayerThickness", paintLayerThickness);
-        }
+			// THICKNESS: how much each deposited unit raises the surface height (0=no bump, higher=thicker paint)
+			float paintLayerThickness;
+			switch (paintType)
+			{
+				// OLD (saturated alpha too quickly — left no room to see height vary):
+				// case PaintType.Watercolor: paintLayerThickness = 0.04f; break;
+				// case PaintType.Acrylic:    paintLayerThickness = 0.15f; break;
+				// case PaintType.WallPaint:  paintLayerThickness = 0.35f; break;
+				// THICKNESS: ~3x smaller than original so edges get visible height without center saturating instantly
+				case PaintType.Watercolor: paintLayerThickness = 0.012f; break;
+				case PaintType.Acrylic: paintLayerThickness = 0.050f; break;
+				case PaintType.WallPaint: paintLayerThickness = 0.110f; break;
+				default: paintLayerThickness = 0.012f; break;
+			}
+			compute.SetFloat("paintLayerThickness", paintLayerThickness);
+			// SPH fields are set by OnValidate() when you switch paint type in the Inspector.
+			// They are NOT forced here, so you can still freely adjust them at runtime.
+		}
 
-        void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
-        {
-            if (smoothingRadius != smoothRadiusOld)
-            {
-                smoothRadiusOld = smoothingRadius;
-                UpdateSmoothingConstants();
-            }
+		void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
+		{
+			if (smoothingRadius != smoothRadiusOld)
+			{
+				smoothRadiusOld = smoothingRadius;
+				UpdateSmoothingConstants();
+			}
 
-            Vector3 simBoundsSize = bucketTransform.localScale;
-            Vector3 simBoundsCentre = bucketTransform.position;
+			Vector3 simBoundsSize = bucketTransform.localScale;
+			Vector3 simBoundsCentre = bucketTransform.position;
 
-            // =========================
-            // CORE SIM SETTINGS
-            // =========================
-            compute.SetFloat("deltaTime", stepDeltaTime);
-            compute.SetFloat("whiteParticleDeltaTime", frameDeltaTime);
-            compute.SetFloat("simTime", simTimer);
+			// =========================
+			// CORE SIM SETTINGS
+			// =========================
+			compute.SetFloat("deltaTime", stepDeltaTime);
+			compute.SetFloat("whiteParticleDeltaTime", frameDeltaTime);
+			compute.SetFloat("simTime", simTimer);
 
-            compute.SetFloat("gravity", gravity);
-            compute.SetFloat("collisionDamping", collisionDamping);
+			compute.SetFloat("gravity", gravity);
+			compute.SetFloat("collisionDamping", collisionDamping);
 
-            compute.SetFloat("smoothingRadius", smoothingRadius);
-            compute.SetFloat("targetDensity", targetDensity);
-            compute.SetFloat("pressureMultiplier", pressureMultiplier);
-            compute.SetFloat("nearPressureMultiplier", nearPressureMultiplier);
-            compute.SetFloat("viscosityStrength", viscosityStrength);
+			compute.SetFloat("smoothingRadius", smoothingRadius);
+			compute.SetFloat("targetDensity", targetDensity);
+			compute.SetFloat("pressureMultiplier", pressureMultiplier);
+			compute.SetFloat("nearPressureMultiplier", nearPressureMultiplier);
+			compute.SetFloat("viscosityStrength", viscosityStrength);
 
-            compute.SetVector("boundsSize", simBoundsSize);
-            compute.SetVector("centre", simBoundsCentre);
-            compute.SetFloat("holeSize", holeSize);
+			compute.SetVector("boundsSize", simBoundsSize);
+			compute.SetVector("centre", simBoundsCentre);
+			compute.SetFloat("holeSize", holeSize);
 			compute.SetVector("holePosition", holePosition);
 			compute.SetInt("holeOrientation", holeOrientation);
 
@@ -666,64 +706,64 @@ namespace Seb.Fluid.Simulation
 			compute.SetVector("sensorExtents", sensorExtents);
 			compute.SetBuffer(updatePositionsKernel, "FlowResultBuffer", flowResultBuffer);
 
-            // CANVAS
-            if (canvasCollision != null)
-            {
-                canvasCollision.SetShaderParams(compute);
-            }
+			// CANVAS
+			if (canvasCollision != null)
+			{
+				canvasCollision.SetShaderParams(compute);
+			}
 
-            // =========================
-            // SURFACE RESPONSE (IMPORTANT PART)
-            // =========================
-            Vector3 surface = GetSurfaceParams();
-            // x = bounce
-            // y = rough
-            // z = absorb
+			// =========================
+			// SURFACE RESPONSE (IMPORTANT PART)
+			// =========================
+			Vector3 surface = GetSurfaceParams();
+			// x = bounce
+			// y = rough
+			// z = absorb
 
-            compute.SetVector("surfaceParams", surface);
-            Debug.Log(surfaceType + " -> " + surface);
-            // =========================
-            // MATRIX TRANSFORMS
-            // =========================
-            compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
-            compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
+			compute.SetVector("surfaceParams", surface);
+			Debug.Log(surfaceType + " -> " + surface);
+			// =========================
+			// MATRIX TRANSFORMS
+			// =========================
+			compute.SetMatrix("localToWorld", bucketTransform.localToWorldMatrix);
+			compute.SetMatrix("worldToLocal", bucketTransform.worldToLocalMatrix);
 
-            // =========================
-            // PAINT TEXTURE
-            // =========================
-            if (paintTexture != null)
-                compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
+			// =========================
+			// PAINT TEXTURE
+			// =========================
+			if (paintTexture != null)
+				compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
 
-            compute.SetVector("paintColour", paintColour);
+			compute.SetVector("paintColour", paintColour);
 
-            // PAINT TYPE
-            SetPaintTypeParams();
+			// PAINT TYPE
+			SetPaintTypeParams();
 
-            // MIXING
-            if (paintAccumTexture != null)
-                compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
+			// MIXING
+			if (paintAccumTexture != null)
+				compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
 
-            // =========================
-            // FOAM SETTINGS
-            // =========================
-            float fadeInT = (spawnRateFadeInTime <= 0)
-                ? 1
-                : Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
+			// =========================
+			// FOAM SETTINGS
+			// =========================
+			float fadeInT = (spawnRateFadeInTime <= 0)
+				? 1
+				: Mathf.Clamp01((simTimer - spawnRateFadeStartTime) / spawnRateFadeInTime);
 
-            compute.SetVector("trappedAirParams",
-                new Vector3(trappedAirSpawnRate * fadeInT * fadeInT,
-                trappedAirVelocityMinMax.x,
-                trappedAirVelocityMinMax.y));
+			compute.SetVector("trappedAirParams",
+				new Vector3(trappedAirSpawnRate * fadeInT * fadeInT,
+				trappedAirVelocityMinMax.x,
+				trappedAirVelocityMinMax.y));
 
-            compute.SetVector("kineticEnergyParams", foamKineticEnergyMinMax);
-            compute.SetFloat("bubbleBuoyancy", bubbleBuoyancy);
-            compute.SetInt("sprayClassifyMaxNeighbours", sprayClassifyMaxNeighbours);
-            compute.SetInt("bubbleClassifyMinNeighbours", bubbleClassifyMinNeighbours);
-            compute.SetFloat("bubbleScaleChangeSpeed", bubbleChangeScaleSpeed);
-            compute.SetFloat("bubbleScale", bubbleScale);
-        }
+			compute.SetVector("kineticEnergyParams", foamKineticEnergyMinMax);
+			compute.SetFloat("bubbleBuoyancy", bubbleBuoyancy);
+			compute.SetInt("sprayClassifyMaxNeighbours", sprayClassifyMaxNeighbours);
+			compute.SetInt("bubbleClassifyMinNeighbours", bubbleClassifyMinNeighbours);
+			compute.SetFloat("bubbleScaleChangeSpeed", bubbleChangeScaleSpeed);
+			compute.SetFloat("bubbleScale", bubbleScale);
+		}
 
-        void SetInitialBufferData(Spawner3D.SpawnData spawnData)
+		void SetInitialBufferData(Spawner3D.SpawnData spawnData)
 		{
 			positionBuffer.SetData(spawnData.points);
 			predictedPositionsBuffer.SetData(spawnData.points);
@@ -771,26 +811,26 @@ namespace Seb.Fluid.Simulation
 
 		private float ActiveTimeScale => inSlowMode ? slowTimeScale : normalTimeScale;
 
-// REPLACE YOUR ONDESTROY METHOD WITH THIS:
-	void OnDestroy()
-	{
-		if (bufferNameLookup != null)
+		// REPLACE YOUR ONDESTROY METHOD WITH THIS:
+		void OnDestroy()
 		{
-			foreach (var kvp in bufferNameLookup)
+			if (bufferNameLookup != null)
 			{
-				Release(kvp.Key);
+				foreach (var kvp in bufferNameLookup)
+				{
+					Release(kvp.Key);
+				}
 			}
+
+			// Explicitly release our upgraded GraphicsBuffer safely
+			if (positionBuffer != null) positionBuffer.Release();
+
+			if (bucketCountBuffer != null) bucketCountBuffer.Release();
+
+			if (flowResultBuffer != null) flowResultBuffer.Release();
+
+			if (spatialHash != null) spatialHash.Release();
 		}
-
-		// Explicitly release our upgraded GraphicsBuffer safely
-		if (positionBuffer != null) positionBuffer.Release();
-
-		if (bucketCountBuffer != null) bucketCountBuffer.Release();
-
-		if (flowResultBuffer != null) flowResultBuffer.Release();
-
-		if (spatialHash != null) spatialHash.Release();
-	}
 
 
 		public struct FoamParticle
@@ -803,6 +843,6 @@ namespace Seb.Fluid.Simulation
 
 
 
-		
+
 	}
 }
