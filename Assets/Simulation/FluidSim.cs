@@ -144,25 +144,25 @@ namespace Seb.Fluid.Simulation
 			{
 				case PaintType.Watercolor:
 					smoothingRadius = 0.2f;
-					targetDensity = 10000f;
-					pressureMultiplier = 10f;
-					nearPressureMultiplier = 5f;
+					targetDensity = 800f;
+					pressureMultiplier = 200f;
+					nearPressureMultiplier = 2f;
 					viscosityStrength = 0.0f;
 					holeSize = 0.011f;
 					break;
 				case PaintType.WallPaint:
 					smoothingRadius = 0.2f;
-					targetDensity = 10000f;
-					pressureMultiplier = 10f;
-					nearPressureMultiplier = 5f;
+					targetDensity = 800f;
+					pressureMultiplier = 200f;
+					nearPressureMultiplier = 2f;
 					viscosityStrength = 0.0004f;
 					holeSize = 0.011f;
 					break;
 				case PaintType.Acrylic:
 					smoothingRadius = 0.2f;
-					targetDensity = 10000f;
-					pressureMultiplier = 10f;
-					nearPressureMultiplier = 5f;
+					targetDensity = 800f;
+					pressureMultiplier = 200f;
+					nearPressureMultiplier = 2f;
 					viscosityStrength = 0.0002f;
 					holeSize = 0.011f;
 					break;
