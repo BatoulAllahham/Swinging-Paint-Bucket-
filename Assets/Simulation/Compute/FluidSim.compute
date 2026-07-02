@@ -78,6 +78,11 @@ const float paintMixRate;
 // MIXING
 RWTexture2D<float4> PaintAccumTexture;
 
+// STYLE: per-pixel wetness (R) and bump (G) baked at deposit time
+RWTexture2D<float2> PaintStyleTexture;
+const float paintWetnessGloss;
+const float paintBumpStrength;
+
 // PAINT TYPE
 const float paintFlowRate;
 const float paintAbsorptionResistance;
@@ -1005,6 +1010,16 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 thickDeposit = max(thickDeposit, depositedMass * 0.01);
                 // OLD: PaintTexture[p] = float4(displayColor, 1.0);
                 PaintTexture[p] = float4(displayColor, min(oldDepThick + thickDeposit, 1.0));
+
+                // Bake wetness/bump into style texture — mass-weighted blend so overlapping
+                // paint from different viscosity settings blends correctly per pixel.
+                float2 oldStyle = PaintStyleTexture[p];
+                float oldStyleMass = storedMass; // reuse the accum mass as weight
+                float newStyleMass = oldStyleMass + depositedMass;
+                PaintStyleTexture[p] = float2(
+                    (oldStyleMass * oldStyle.r + depositedMass * paintWetnessGloss) / max(newStyleMass, 0.001),
+                    (oldStyleMass * oldStyle.g + depositedMass * paintBumpStrength)  / max(newStyleMass, 0.001)
+                );
             }
     }
     if (!didHit && ParticleStates[id.x] != 2)

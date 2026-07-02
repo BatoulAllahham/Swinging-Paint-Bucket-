@@ -28,6 +28,10 @@ namespace Seb.Fluid.Simulation
 		RenderTexture paintAccumTexture;
 		static RenderTexture sharedPaintAccumTexture; // shared across all buckets
 
+		// STYLE: per-pixel wetness (R) and bump strength (G) baked at deposit time
+		RenderTexture paintStyleTexture;
+		static RenderTexture sharedPaintStyleTexture;
+
 		[Header("Time Step")] public float normalTimeScale = 1;
 		public float slowTimeScale = 0.1f;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
@@ -403,6 +407,22 @@ namespace Seb.Fluid.Simulation
 			}
 
 			compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
+
+			// STYLE texture: per-pixel wetness/bump baked at deposit time
+			if (sharedPaintStyleTexture != null && sharedPaintStyleTexture.IsCreated())
+			{
+				paintStyleTexture = sharedPaintStyleTexture;
+			}
+			else
+			{
+				paintStyleTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.RGFloat);
+				paintStyleTexture.enableRandomWrite = true;
+				paintStyleTexture.Create();
+				sharedPaintStyleTexture = paintStyleTexture;
+			}
+			compute.SetTexture(updatePositionsKernel, "PaintStyleTexture", paintStyleTexture);
+			if (canvasMaterial != null)
+				canvasMaterial.SetTexture("_StyleTex", paintStyleTexture);
 		}
 
 		void Update()
@@ -574,104 +594,45 @@ namespace Seb.Fluid.Simulation
 
 		void SetPaintTypeParams()
 		{
-			float paintViscosity, paintDensityFactor, mixRate;
+			// Single source of truth: everything derives from viscosityStrength.
+			// viscNorm: 0=watercolor (visc=0), 0.333=acrylic (visc=0.0002), 0.5=wallpaint (visc=0.0004).
+			// Asymptotic — approaches 1.0 as viscosity → ∞, no hard ceiling.
+			float viscNorm = viscosityStrength / (viscosityStrength + 0.0004f);
 
-			switch (paintType)
-			{
-				case PaintType.Watercolor:
-					paintViscosity = 0.0f;
-					paintDensityFactor = 0.0f;
-					mixRate = 1.0f;
-					break;
-				case PaintType.Acrylic:
-					paintViscosity = 0.4f;
-					paintDensityFactor = 0.5f;
-					mixRate = 0.0f;
-					break;
-				case PaintType.WallPaint:
-					paintViscosity = 1.0f;
-					paintDensityFactor = 1.0f;
-					mixRate = 0.0f;
-					break;
-				default:
-					paintViscosity = 0.0f;
-					paintDensityFactor = 0.0f;
-					mixRate = 1.0f;
-					break;
-			}
-
-			compute.SetFloat("paintViscosity", paintViscosity);
+			// OLD: hardcoded switch — watercolor=0/0, acrylic=0.4/0.5, wallpaint=1/1
+			float paintViscosity     = Mathf.Lerp(0.0f, 2.0f, viscNorm); // wallpaint→1.0, beyond→up to 2
+			float paintDensityFactor = Mathf.Lerp(0.0f, 2.0f, viscNorm);
+			compute.SetFloat("paintViscosity",     paintViscosity);
 			compute.SetFloat("paintDensityFactor", paintDensityFactor);
+
+			// mixRate: steep threshold so only zero-viscosity (watercolor) mixes.
+			// OLD: hardcoded watercolor=1, acrylic=0, wallpaint=0
+			float mixRate = 1.0f - Mathf.Clamp01(viscosityStrength / 0.00005f);
 			compute.SetFloat("paintMixRate", mixRate);
 
-			float flowRate;
-			switch (paintType)
-			{
-				case PaintType.Watercolor:
-					flowRate = 1.0f;
-					break; // flows freely
-				case PaintType.Acrylic:
-					flowRate = 0.3f;
-					break; // flows slowly  
-				case PaintType.WallPaint:
-					flowRate = 0.05f;
-					break; // barely flows
-				default:
-					flowRate = 1.0f;
-					break;
-			}
-
+			// flowRate: exponential decay — watercolor(0)→1.0, wallpaint(0.5)→0.05, beyond→<0.05
+			// OLD: hardcoded watercolor=1.0, acrylic=0.3, wallpaint=0.05
+			float flowRate = Mathf.Pow(0.05f, viscNorm * 2.0f);
 			compute.SetFloat("paintFlowRate", flowRate);
 
+			// Wetness and bump baked per-pixel into PaintStyleTexture at deposit time.
+			compute.SetFloat("paintWetnessGloss", Mathf.Lerp(0.4f, 0.0f, viscNorm));
+			compute.SetFloat("paintBumpStrength",  Mathf.Lerp(1.5f, 5.5f, viscNorm));
 
-			// How fast paint gets absorbed INTO the surface (separate from surface absorb param)
-			// High = paint disappears quickly into surface
-			// Low = paint sits on surface
-			float paintAbsorptionResistance;
-
-			// How much paint spreads on contact
-			float paintSpread;
-
-			switch (paintType)
-			{
-				case PaintType.Watercolor:
-					paintAbsorptionResistance = 0.0f; // absorbed easily
-					paintSpread = 1.0f;               // spreads wide
-					break;
-				case PaintType.Acrylic:
-					paintAbsorptionResistance = 0.5f; // partially resists
-					paintSpread = 0.6f;               // medium spread
-					break;
-				case PaintType.WallPaint:
-					paintAbsorptionResistance = 0.9f; // resists absorption
-					paintSpread = 0.3f;               // tight deposit
-					break;
-				default:
-					paintAbsorptionResistance = 0.0f;
-					paintSpread = 1.0f;
-					break;
-			}
-
+			// absorptionResistance: watercolor(0)→0.0, wallpaint(0.5)→0.9, beyond→up to 1.8
+			// OLD: hardcoded watercolor=0.0, acrylic=0.5, wallpaint=0.9
+			float paintAbsorptionResistance = Mathf.Lerp(0.0f, 1.8f, viscNorm);
 			compute.SetFloat("paintAbsorptionResistance", paintAbsorptionResistance);
+
+			// spread: exponential decay — watercolor(0)→1.0, wallpaint(0.5)→0.3, beyond→<0.3
+			// OLD: hardcoded watercolor=1.0, acrylic=0.6, wallpaint=0.3
+			float paintSpread = Mathf.Pow(0.3f, viscNorm * 2.0f);
 			compute.SetFloat("paintSpread", paintSpread);
 
-			// THICKNESS: how much each deposited unit raises the surface height (0=no bump, higher=thicker paint)
-			float paintLayerThickness;
-			switch (paintType)
-			{
-				// OLD (saturated alpha too quickly — left no room to see height vary):
-				// case PaintType.Watercolor: paintLayerThickness = 0.04f; break;
-				// case PaintType.Acrylic:    paintLayerThickness = 0.15f; break;
-				// case PaintType.WallPaint:  paintLayerThickness = 0.35f; break;
-				// THICKNESS: ~3x smaller than original so edges get visible height without center saturating instantly
-				case PaintType.Watercolor: paintLayerThickness = 0.012f; break;
-				case PaintType.Acrylic: paintLayerThickness = 0.050f; break;
-				case PaintType.WallPaint: paintLayerThickness = 0.110f; break;
-				default: paintLayerThickness = 0.012f; break;
-			}
+			// thickness: watercolor(0)→0.012, wallpaint(0.5)→0.110, beyond→up to 0.208
+			// OLD: hardcoded watercolor=0.012, acrylic=0.050, wallpaint=0.110
+			float paintLayerThickness = Mathf.Lerp(0.012f, 0.208f, viscNorm);
 			compute.SetFloat("paintLayerThickness", paintLayerThickness);
-			// SPH fields are set by OnValidate() when you switch paint type in the Inspector.
-			// They are NOT forced here, so you can still freely adjust them at runtime.
 		}
 
 		void UpdateSettings(float stepDeltaTime, float frameDeltaTime)
@@ -754,6 +715,10 @@ namespace Seb.Fluid.Simulation
 			// MIXING
 			if (paintAccumTexture != null)
 				compute.SetTexture(updatePositionsKernel, "PaintAccumTexture", paintAccumTexture);
+
+			// STYLE: rebind every frame so the compute shader always has it
+			if (paintStyleTexture != null)
+				compute.SetTexture(updatePositionsKernel, "PaintStyleTexture", paintStyleTexture);
 
 			// =========================
 			// FOAM SETTINGS

@@ -13,6 +13,8 @@ Shader "Custom/CanvasPaint"
         // THICKNESS: tessellation — subdivides mesh so paint is geometrically raised
         _TessellationFactor ("Tessellation Factor", Range(1, 64)) = 32
         _DisplacementScale  ("Displacement Scale (world units)", Range(0, 1)) = 0.15
+        // STYLE: per-pixel wetness (R) and bump (G) baked at deposit time
+        _StyleTex           ("Style Texture (R=wetness, G=bump)", 2D) = "black" {}
     }
 
     SubShader
@@ -49,6 +51,9 @@ Shader "Custom/CanvasPaint"
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
+            // STYLE: per-pixel wetness/bump baked at deposit time
+            TEXTURE2D(_StyleTex);
+            SAMPLER(sampler_StyleTex);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _MainTex_ST;
@@ -233,8 +238,16 @@ Shader "Custom/CanvasPaint"
                 float hD  = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv + float2(  0, -ty)).a;
                 float hU  = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv + float2(  0,  ty)).a;
 
-                float dhdx = (hR - hL) * _BumpStrength;
-                float dhdy = (hU - hD) * _BumpStrength;
+                // STYLE: read per-pixel wetness/bump baked at deposit time.
+                // Falls back to material globals (_WetnessGloss/_BumpStrength) on unpainted pixels.
+                float height   = c.a;
+                float hasPaint = saturate(sqrt(height * 500.0));
+                float2 style   = SAMPLE_TEXTURE2D(_StyleTex, sampler_StyleTex, uv).rg;
+                float pixelWetness = lerp(_WetnessGloss, style.r, hasPaint);
+                float pixelBump    = lerp(_BumpStrength,  style.g, hasPaint);
+
+                float dhdx = (hR - hL) * pixelBump;
+                float dhdy = (hU - hD) * pixelBump;
 
                 // Tangent-space normal from height gradient
                 float3 normalTS = normalize(float3(-dhdx, -dhdy, 1.0));
@@ -259,14 +272,13 @@ Shader "Custom/CanvasPaint"
                 // Color: blend from canvas base to paint color
                 // sqrt(height*500): watercolor center (height≈0.002) → hasPaint≈1.0, full color.
                 // Displacement still uses raw height so WallPaint is physically thicker than watercolor.
-                float height   = c.a;
-                // OLD: float hasPaint = saturate(height * 25.0);
-                float hasPaint = saturate(sqrt(height * 500.0));
+                // (height and hasPaint already computed above for style sampling)
                 float3 albedo  = lerp(_CanvasColor.rgb, c.rgb, hasPaint);
 
-                // Thick paint slightly glossier but never mirror-like — squared curve keeps it matte
-                // OLD: float smoothness = lerp(_CanvasSmoothness, _WetnessGloss, height);
-                float smoothness = lerp(_CanvasSmoothness, _WetnessGloss, height * height);
+                // Thick paint slightly glossier but never mirror-like — squared curve keeps it matte.
+                // Uses per-pixel wetness baked at deposit time (pixelWetness) instead of global _WetnessGloss.
+                // OLD: float smoothness = lerp(_CanvasSmoothness, _WetnessGloss, height * height);
+                float smoothness = lerp(_CanvasSmoothness, pixelWetness, height * height);
 
                 // URP PBR lighting
                 InputData inputData = (InputData)0;
