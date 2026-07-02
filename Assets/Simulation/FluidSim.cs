@@ -85,6 +85,11 @@ namespace Seb.Fluid.Simulation
 		[HideInInspector] public RenderTexture DensityMap;
 		public Vector3 Scale => transform.localScale;
 
+		[Header("Environmental Settings")]
+        [Range(-10f, 60f)] public float temperature     = 25f;
+        [Range(0f, 1f)]    public float humidity        = 0.5f;
+        [Range(0f, 0.1f)]  public float evaporationRate = 0.01f;
+
 		// Buffers
 		public ComputeBuffer foamBuffer { get; private set; }
 		public ComputeBuffer foamSortTargetBuffer { get; private set; }
@@ -699,6 +704,13 @@ namespace Seb.Fluid.Simulation
 			compute.SetVector("boundsSize", simBoundsSize);
 			compute.SetVector("centre", simBoundsCentre);
 			compute.SetFloat("holeSize", holeSize);
+
+			// Environmental settings
+            compute.SetFloat("temperature",     temperature);
+            compute.SetFloat("humidity",        humidity);
+            compute.SetFloat("evaporationRate", evaporationRate);
+
+
 			compute.SetVector("holePosition", holePosition);
 			compute.SetInt("holeOrientation", holeOrientation);
 

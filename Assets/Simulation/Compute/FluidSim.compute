@@ -51,6 +51,11 @@ const float4x4 localToWorld;
 const float4x4 worldToLocal;
 RWStructuredBuffer<int> ParticleStates;
 
+// Environmental Properties
+const float temperature;
+const float humidity;
+const float evaporationRate;
+
 RWStructuredBuffer<int> FlowResultBuffer; // [Count, SumX, SumY, SumZ]
 float3 sensorCenter;
 float3 sensorExtents;
@@ -816,6 +821,17 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         // effectiveAbsorb: only used for paint deposit shape
         float effectiveAbsorb = absorb * (1.0 - paintAbsorptionResistance);
 
+        // Temperature: higher temp = paint spreads more
+        float effectiveSurfaceTension = max(0.01, 0.072 - 0.0001 * temperature);
+        float tempSpreadFactor = 1.0 / max(0.1, effectiveSurfaceTension);
+
+        // Humidity: higher humidity = wider, more transparent splat
+        float humiditySpreadBonus   = humidity * 0.5;
+        float humidityOpacityFactor = 1.0 - humidity * 0.3;
+
+        // Evaporation: fades paint alpha slightly on contact
+        float evapFade = evaporationRate * (1.0 - humidity) * deltaTime;
+
         if (absorb > 0.8)
         {
             float3 edgeFlow = slideDir;
@@ -838,7 +854,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
         //radius = max(radius, 1);
         float spreadScale = lerp(1.0, paintSpread, paintFlowRate);
-        int radius = max(3, (int) (lerp(2, 10, absorb + rough * 0.5) * spreadScale));
+        int radius = max(3, (int)(lerp(2, 10, absorb + rough * 0.5) * spreadScale * tempSpreadFactor * (1.0 + humiditySpreadBonus)));
 
         float paintSpeed = length(vT);
         float streak;
@@ -940,6 +956,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float alpha = saturate(1.0 - distF);
                 alpha *= (1.0 - rough * distF);
                 alpha *= (1.0 - effectiveAbsorb * 0.5);
+                alpha *= humidityOpacityFactor;
+                alpha = max(0.0, alpha - evapFade);
+
 
                 //MIXING 
                 float depositedMass = alpha;
