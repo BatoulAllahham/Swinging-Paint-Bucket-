@@ -883,27 +883,65 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             for (int y = -radius; y <= radius; y++)
             {
                 int2 p;
-                float angle = atan2((float) y, (float) x);
-                float dist = length(float2(x, y)) / max(radius, 1);
+                // اتجاه السيلان
+                float2 flowDir = float2(0, 0);
+                if (slideStrength > 0.0001)
+                {
+                    flowDir.x = dot(slideDir, canvasRight);
+                    flowDir.y = dot(slideDir, canvasUp);
+                    flowDir = normalize(flowDir);
+                }
+
+                if (length(flowDir) < 0.001)
+                    flowDir = float2(1, 0);
+
+// مقدار الميل
+                float tiltAmount = 1.0 - flatness;
+
+// التمدد
+                float stretch = lerp(1.0, 5.5, pow(max(0.0, tiltAmount), 1.7));
+
+// المحور العمودي
+                float2 perpFlow = float2(-flowDir.y, flowDir.x);
+
+// إسقاط النقطة
+                float alongFlow = dot(float2(x, y), flowDir);
+                float acrossFlow = dot(float2(x, y), perpFlow);
+
+// الشكل البيضاوي
+                float ellipseX = alongFlow / (radius * stretch);
+                float ellipseY = acrossFlow / radius;
+
+                float distF = length(float2(ellipseX, ellipseY));
+
+                if (distF > 1.0)
+                    continue;
+
+                float angle = atan2(ellipseY, ellipseX);
 
                 float splashNoise =
-    frac(sin(dot(float2(angle * 7.3, dist * 13.7) + coord,
+    frac(sin(dot(float2(angle * 7.3, distF * 13.7) + coord,
     float2(12.9898, 78.233))) * 43758.5453);
 
                 float splashShape =
     pow(abs(sin(angle * 8.0 + splashNoise * 4.0)), 5.0);
 
                 float extraSplash =
-    splashShape * radius * 0.6 * dist;
+    splashShape * radius * 0.15 * distF;
 
-                float2 dir = normalize(float2(x, y));
-                if (length(float2(x, y)) < 0.001)
+                float2 dir = normalize(float2(ellipseX, ellipseY));
+                if (length(float2(ellipseX, ellipseY)) < 0.001)
                     dir = float2(0, 0);
 
                 int2 irregularOffset =
-    int2(x, y) +
-    int2((int) (dir.x * extraSplash),
-         (int) (dir.y * extraSplash));
+    int2(
+        (int) (flowDir.x * alongFlow + perpFlow.x * acrossFlow),
+        (int) (flowDir.y * alongFlow + perpFlow.y * acrossFlow)
+    ) +
+    int2(
+        (int) (dir.x * extraSplash),
+        (int) (dir.y * extraSplash)
+    );
 
                 if (absorb < 0.7)
                 {
@@ -938,29 +976,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             p.y < 0 || p.y >= paintTextureSize)
                     continue;
 
-// اتجاه السيلان على السطح
-                float2 flowDir = float2(0, 0);
-                if (slideStrength > 0.0001)
-                {
-                    flowDir.x = dot(slideDir, canvasRight);
-                    flowDir.y = dot(slideDir, canvasUp);
-                    flowDir = normalize(flowDir);
-                }
-
-// مقدار الميلان
-                float tiltAmount = 1.0 - flatness;
-
-// تمدد البقعة حسب الميل
-                float stretch = lerp(1.0, 5.5, pow(max(0.0, tiltAmount), 1.7));
-// إسقاط النقطة على اتجاه السيلان
-                float alongFlow = dot(float2(x, y), flowDir);
-                float acrossFlow = dot(float2(x, y), float2(-flowDir.y, flowDir.x));
-
-// دائرة إذا أفقي، بيضاوي إذا مائل
-                float distF = sqrt(
-    (alongFlow * alongFlow) / (radius * radius * stretch * stretch) +
-    (acrossFlow * acrossFlow) / (radius * radius)
-);
 
                 float alpha = saturate(1.0 - distF);
                 alpha *= (1.0 - rough * distF);
