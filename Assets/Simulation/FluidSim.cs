@@ -90,9 +90,9 @@ namespace Seb.Fluid.Simulation
 		public Vector3 Scale => transform.localScale;
 
 		[Header("Environmental Settings")]
-        [Range(-10f, 60f)] public float temperature     = 25f;
-        [Range(0f, 1f)]    public float humidity        = 0.5f;
-        [Range(0f, 0.1f)]  public float evaporationRate = 0.01f;
+		[Range(-10f, 60f)] public float temperature = 25f;
+		[Range(0f, 1f)] public float humidity = 0.5f;
+		[Range(0f, 0.1f)] public float evaporationRate = 0.01f;
 
 		// Buffers
 		public ComputeBuffer foamBuffer { get; private set; }
@@ -444,6 +444,19 @@ namespace Seb.Fluid.Simulation
 			HandleInput();
 			Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
 		}
+		// BANA
+		// Resets all particles to fluid state at their original spawn positions.
+		// Called by MixingSceneUI when clearing the canvas so in-air particles are also removed.
+		public void ResetParticles()
+		{
+			if (spawnData.points == null || positionBuffer == null) return;
+			var positions  = System.Array.ConvertAll(spawnData.points, p => (Vector3)p);
+			var velocities = new Vector3[positions.Length];
+			var states     = new int[positions.Length]; // all 0 = fluid
+			positionBuffer.SetData(positions);
+			velocityBuffer.SetData(velocities);
+			stateBuffer.SetData(states);
+		}
 
 		void RunSimulationFrame(float frameDeltaTime)
 		{
@@ -600,24 +613,24 @@ namespace Seb.Fluid.Simulation
 			float viscNorm = viscosityStrength / (viscosityStrength + 0.0004f);
 
 			// OLD: hardcoded switch — watercolor=0/0, acrylic=0.4/0.5, wallpaint=1/1
-			float paintViscosity     = Mathf.Lerp(0.0f, 2.0f, viscNorm); // wallpaint→1.0, beyond→up to 2
+			float paintViscosity = Mathf.Lerp(0.0f, 2.0f, viscNorm); // wallpaint→1.0, beyond→up to 2
 			float paintDensityFactor = Mathf.Lerp(0.0f, 2.0f, viscNorm);
-			compute.SetFloat("paintViscosity",     paintViscosity);
+			compute.SetFloat("paintViscosity", paintViscosity);
 			compute.SetFloat("paintDensityFactor", paintDensityFactor);
 
-			// mixRate: steep threshold so only zero-viscosity (watercolor) mixes.
-			// OLD: hardcoded watercolor=1, acrylic=0, wallpaint=0
-			float mixRate = 1.0f - Mathf.Clamp01(viscosityStrength / 0.00005f);
-			compute.SetFloat("paintMixRate", mixRate);
+			// mixRate and wetnessGloss are strictly binary: watercolor (viscosity==0) vs everything else.
+			// Any positive viscosity means a non-mixing paint — no partial rates.
+			bool isWatercolor = viscosityStrength <= 0f;
+			compute.SetFloat("paintMixRate",      isWatercolor ? 1.0f : 0.0f);
+			compute.SetFloat("paintWetnessGloss", isWatercolor ? 0.4f : 0.0f);
 
 			// flowRate: exponential decay — watercolor(0)→1.0, wallpaint(0.5)→0.05, beyond→<0.05
 			// OLD: hardcoded watercolor=1.0, acrylic=0.3, wallpaint=0.05
 			float flowRate = Mathf.Pow(0.05f, viscNorm * 2.0f);
 			compute.SetFloat("paintFlowRate", flowRate);
 
-			// Wetness and bump baked per-pixel into PaintStyleTexture at deposit time.
-			compute.SetFloat("paintWetnessGloss", Mathf.Lerp(0.4f, 0.0f, viscNorm));
-			compute.SetFloat("paintBumpStrength",  Mathf.Lerp(1.5f, 5.5f, viscNorm));
+			// Bump baked per-pixel into PaintStyleTexture at deposit time (wetness set above, binary).
+			compute.SetFloat("paintBumpStrength", Mathf.Lerp(1.5f, 5.5f, viscNorm));
 
 			// absorptionResistance: watercolor(0)→0.0, wallpaint(0.5)→0.9, beyond→up to 1.8
 			// OLD: hardcoded watercolor=0.0, acrylic=0.5, wallpaint=0.9
@@ -667,9 +680,9 @@ namespace Seb.Fluid.Simulation
 			compute.SetFloat("holeSize", holeSize);
 
 			// Environmental settings
-            compute.SetFloat("temperature",     temperature);
-            compute.SetFloat("humidity",        humidity);
-            compute.SetFloat("evaporationRate", evaporationRate);
+			compute.SetFloat("temperature", temperature);
+			compute.SetFloat("humidity", humidity);
+			compute.SetFloat("evaporationRate", evaporationRate);
 
 
 			compute.SetVector("holePosition", holePosition);

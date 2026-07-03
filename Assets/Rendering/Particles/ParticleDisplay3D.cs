@@ -81,6 +81,14 @@ namespace Seb.Fluid.Rendering
 					needsUpdate = false;
 				}
 
+				// Refresh particle colour every frame so runtime changes to paintColour take effect
+				if (gradientTexture != null)
+				{
+					gradientTexture.SetPixel(0, 0, sim.paintColour);
+					gradientTexture.Apply();
+					mat.SetTexture("ColourMap", gradientTexture);
+				}
+
 				mat.SetFloat("scale", scale * 0.01f);
 				mat.SetFloat("velocityMax", velocityDisplayMax);
 

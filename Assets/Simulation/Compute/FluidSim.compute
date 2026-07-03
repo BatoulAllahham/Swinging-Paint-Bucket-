@@ -985,17 +985,18 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float4 accum = PaintAccumTexture[p];
                 float storedMass = accum.a;
                 float3 oldPigment = accum.rgb;
+                
+                // BANA
+                // paintMixRate is strictly 1.0 (watercolor, viscosity==0) or 0.0 (any viscosity>0).
+                // paintWetnessGloss is strictly 0.4 (watercolor) or 0.0 (viscous).
+                // storedWetness==0.4 means the last depositor was watercolor; 0.0 means viscous.
+                float storedWetness = PaintStyleTexture[p].r;
+                // Mixing only if BOTH incoming and stored are watercolor.
+                bool incomingIsWater = paintMixRate > 0.5;
+                bool storedIsWater   = storedWetness > 0.2;
+                bool doMix           = incomingIsWater && storedIsWater;
 
-                float effectiveOldMass;
-                if (paintMixRate < 0.05)
-                    effectiveOldMass = min(storedMass, 0.1);
-                else if (paintMixRate < 0.5)
-                {
-                    effectiveOldMass = storedMass * storedMass * 2.0;
-                    effectiveOldMass = min(effectiveOldMass, 500.0);
-                }
-                else
-                    effectiveOldMass = min(storedMass, 5.0);
+                float effectiveOldMass = doMix ? min(storedMass, 5.0) : 0.0;
 
                 float newEffectiveMass = effectiveOldMass + depositedMass;
                 float3 avgPigment = (effectiveOldMass * oldPigment + depositedMass * newPigment)
@@ -1019,16 +1020,18 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 thickDeposit = max(thickDeposit, depositedMass * 0.01);
                 // OLD: PaintTexture[p] = float4(displayColor, 1.0);
                 PaintTexture[p] = float4(displayColor, min(oldDepThick + thickDeposit, 1.0));
-
-                // Bake wetness/bump into style texture — mass-weighted blend so overlapping
-                // paint from different viscosity settings blends correctly per pixel.
+                
+                // BANA
+                // Style texture: R = paint-type tag (0.4=watercolor, 0.0=viscous), G = bump strength.
+                // The type tag is ALWAYS overwritten by whoever deposits — never blended.
+                // Blending the tag was the source of trailing mix: a small viscous deposit on a
+                // large watercolor mass would leave R still >0.2, making the next watercolor
+                // treat the pixel as watercolor-compatible and blend with the viscous color.
                 float2 oldStyle = PaintStyleTexture[p];
-                float oldStyleMass = storedMass; // reuse the accum mass as weight
+                float oldStyleMass = storedMass;
                 float newStyleMass = oldStyleMass + depositedMass;
-                PaintStyleTexture[p] = float2(
-                    (oldStyleMass * oldStyle.r + depositedMass * paintWetnessGloss) / max(newStyleMass, 0.001),
-                    (oldStyleMass * oldStyle.g + depositedMass * paintBumpStrength)  / max(newStyleMass, 0.001)
-                );
+                float newBump = (oldStyleMass * oldStyle.g + depositedMass * paintBumpStrength) / max(newStyleMass, 0.001);
+                PaintStyleTexture[p] = float2(paintWetnessGloss, newBump); // R always overwritten
             }
     }
     if (!didHit && ParticleStates[id.x] != 2)
