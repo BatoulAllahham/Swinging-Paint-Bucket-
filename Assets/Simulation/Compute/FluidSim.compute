@@ -882,6 +882,9 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         for (int x = -radius; x <= radius; x++)
             for (int y = -radius; y <= radius; y++)
             {
+                float2 pxy = float2(x, y);
+                if (dot(pxy, pxy) > radius * radius)
+                    continue;
                 int2 p;
                 float angle = atan2((float) y, (float) x);
                 float dist = length(float2(x, y)) / max(radius, 1);
@@ -900,10 +903,16 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 if (length(float2(x, y)) < 0.001)
                     dir = float2(0, 0);
 
-                int2 irregularOffset =
-    int2(x, y) +
-    int2((int) (dir.x * extraSplash),
-         (int) (dir.y * extraSplash));
+                float2 base = float2(x, y);
+
+                float2 jitter = float2(
+    frac(sin(dot(base + coord, float2(12.9898, 78.233)))) - 0.5,
+    frac(sin(dot(base + coord, float2(45.164, 94.673)))) - 0.5
+);
+
+                float2 offset = base + jitter * extraSplash;
+
+                int2 irregularOffset = int2(offset);
 
                 if (absorb < 0.7)
                 {
