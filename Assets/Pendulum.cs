@@ -7,7 +7,7 @@ public class Pendulum : MonoBehaviour
 
 
     [Header("Angles and Velocities")]
-  
+
     [SerializeField] float thetaAngularVelocity = 30.0f;
     [SerializeField] float phiAngularVelocity = 30.0f;
     [SerializeField] float thetaDegree = 45.0f;
@@ -21,7 +21,7 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float mass = 1.0f;
     [Header("Dependencies")]
     public TotalWeightManager weightManager;
-    private float baseMass=1;
+    private float baseMass = 1;
 
     [Header("Objects")]
     [SerializeField] Transform hangPoint;
@@ -37,9 +37,11 @@ public class Pendulum : MonoBehaviour
     private float thetaAngularVelo;
     private float phiAngularVelo;
     private bool isDragging = false;
-   
 
- 
+    public float straightnessFactor = 1.0f;
+
+
+
 
 
 
@@ -243,11 +245,11 @@ public class Pendulum : MonoBehaviour
 
 
 
- 
+
     void Start()
     {
-        
-        mass=baseMass;
+
+        mass = baseMass;
         ropeComponent = rope.GetComponent<Rope>();
         ropeLength = ropeComponent.RopeLength;
 
@@ -263,14 +265,19 @@ public class Pendulum : MonoBehaviour
 
     private void FixedUpdate()
     {
+
+        //ropeLength = ropeComponent.CurrentStretchedLength;
         ropeLength = ropeComponent.RopeLength;
+        float normalizedTheta = Mathf.Abs(thetaDegree) / 45.0f;
+        straightnessFactor = 1.0f - Mathf.Clamp01(normalizedTheta);
+
         if (!isDragging)
         {
             // get mass for all the fluids carried at the moment in the racket from weight manager
-        if (weightManager != null)
-        {
-            mass = baseMass + weightManager.totalCombinedWeight;
-        }
+            if (weightManager != null)
+            {
+                mass = baseMass + weightManager.totalCombinedWeight;
+            }
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);
             thetaAngularVelo += state[0];       //θ˙new​=θ˙old​+Δθ˙
             phiAngularVelo += state[1];         //ϕ˙​new​=ϕ˙​old​+Δϕ˙​
@@ -285,6 +292,7 @@ public class Pendulum : MonoBehaviour
             phiDegree = phiRadian * Mathf.Rad2Deg;
 
             transform.position = getPosition() + hangPoint.position;
+
 
             Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
             Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
@@ -333,4 +341,3 @@ public class Pendulum : MonoBehaviour
 
 
 }
-

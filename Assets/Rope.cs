@@ -1,33 +1,42 @@
-
 using UnityEngine;
 
 public class Rope : MonoBehaviour
 {
-    public float ropeLength = 8.0f; // the total L
+    public enum RopeType { Metal = 0, Normal = 1, Elastic = 2, Wooden = 3 }
+    public RopeType type = RopeType.Metal;
+
+    public float ropeLength = 8.0f;
     private float previousRopeLength;
     public float RopeLength => ropeLength;
+    public float totalRopeMass = 0.5f; // 0 for a perfectly straight metal rope
+
+
+
+
+
 
     [Header("References")]
     [SerializeField] Transform hangPoint;
     [SerializeField] Transform bucket;
-    [SerializeField] private Vector3 bucketTopOffset = new Vector3(0f, 0.5f, 0f);
+    [SerializeField] private Vector3 bucketTopOffset = new Vector3(0f, -1.0f, 0f);
+
 
     [Header("Rope Settings")]
-    [SerializeField] int numSegments = 30; //how many pieces we brake the rope into
+    [SerializeField] int numSegments = 30;
     [SerializeField] float ropeRadius = 0.05f;
-    [SerializeField] int radialSegments = 8; //in one ring, how many vertices we have
+    [SerializeField] int radialSegments = 8;
 
     [Header("Physics")]
     [SerializeField] float gravity = 9.81f;
-    [SerializeField] int constraintIterations = 5; //the No. of iteration 
+    [SerializeField] int constraintIterations = 15;
     [SerializeField] int substeps = 4;
 
-    // Verlet data
-    private Vector3[] positions; //current position P_i
-    private Vector3[] previousPositions; // P_i-1
-    private float segmentLength; //L_segment
+    private Vector3[] positions;
+    private Vector3[] previousPositions;
+    private float segmentLength;
+    private float[] inverseMasses;
 
-    // Mesh data (Created ONCE)
+    // Mesh data
     private Mesh ropeMesh;
     private MeshFilter meshFilter;
     private Vector3[] vertices;
@@ -36,6 +45,18 @@ public class Rope : MonoBehaviour
 
 
 
+    public float CurrentStretchedLength { get; private set; }
+
+
+    private static readonly (float stiffness, float damping, int iterations)[] Presets = new[]
+  {
+        (1.0f,    0.999f, 80),   // metal
+        (1.0f,    0.995f, 80),   // wooden
+        (0.90f,   0.998f, 75),   // normal
+        (0.70f,   0.99f,  30)    //elastic
+    };
+
+    //iteration 1->100, damping 0.9->1, stiffness 0.01->1.0, 
 
     void Start()
     {
@@ -47,14 +68,72 @@ public class Rope : MonoBehaviour
         UpdateVertexPositions();
     }
 
+    //void FixedUpdate()
+    //{
+    //    // Grab the correct preset based on the selected enum
+    //    var preset = Presets[(int)type];
+
+    //    float dt = Time.fixedDeltaTime / substeps;
+
+    //    for (int s = 0; s < substeps; s++)
+    //    {
+    //        Simulate(dt, preset.damping);               // Pass damping
+    //        ApplyConstraints(preset.stiffness, preset.iterations); // Pass stiffness & iterations
+    //    }
+
+    //    if (!Mathf.Approximately(ropeLength, previousRopeLength))
+    //    {
+    //        previousRopeLength = ropeLength;
+    //        OnRopeLengthChanged();
+    //    }
+
+    //    CurrentStretchedLength = Vector3.Distance(positions[0], positions[numSegments]);
+    //    UpdateVertexPositions();
+    //}
+
+
+
+
     void FixedUpdate()
     {
-        float dt = Time.fixedDeltaTime / substeps;
+        // 1. Pin endpoints
+        Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
+        positions[0] = hangPoint.position;
+        previousPositions[0] = hangPoint.position; // Hangpoint never moves
 
-        for (int s = 0; s < substeps; s++)
+        positions[numSegments] = attachPoint;
+        if (bucket != null)
         {
-            Simulate(dt);
-            ApplyConstraints();
+
+            Vector3 bucketVelocity = bucket.GetComponent<Pendulum>()?.getLinearVelocity() ?? Vector3.zero;
+            previousPositions[numSegments] = attachPoint - (bucketVelocity * Time.fixedDeltaTime);
+        }
+        else
+        {
+            previousPositions[numSegments] = attachPoint;
+        }
+
+        var preset = Presets[(int)type];
+
+        if (type == RopeType.Metal || type == RopeType.Wooden)
+        {
+
+            for (int i = 1; i < numSegments; i++)
+            {
+                float t = (float)i / numSegments;
+                positions[i] = Vector3.Lerp(positions[0], positions[numSegments], t);
+                previousPositions[i] = positions[i];
+            }
+        }
+        else
+        {
+
+            float dt = Time.fixedDeltaTime / substeps;
+            for (int s = 0; s < substeps; s++)
+            {
+                Simulate(dt, preset.damping);
+                ApplyConstraints(preset.stiffness, preset.iterations);
+            }
         }
 
         if (!Mathf.Approximately(ropeLength, previousRopeLength))
@@ -63,97 +142,99 @@ public class Rope : MonoBehaviour
             OnRopeLengthChanged();
         }
 
-
+        CurrentStretchedLength = Vector3.Distance(positions[0], positions[numSegments]);
         UpdateVertexPositions();
     }
 
 
+
+
+
+
     void OnRopeLengthChanged()
     {
-        // Recompute segment length
         segmentLength = ropeLength / numSegments;
-
-        // Reinitialize rope positions along new length
         InitializeRope();
     }
 
-
-    //(1st step) : just put the points in their place
     void InitializeRope()
     {
-
         segmentLength = ropeLength / numSegments;
-        //for 30 points we need 31 positions (0-30)
         positions = new Vector3[numSegments + 1];
         previousPositions = new Vector3[numSegments + 1];
+        inverseMasses = new float[numSegments + 1];
 
-        //d = (End - Start) / ||End - Start||
         Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
         Vector3 direction = (attachPoint - hangPoint.position).normalized;
         if (direction == Vector3.zero) direction = Vector3.down;
-        //loop over all the points and set them in the initial position
+
+        float segmentMass = totalRopeMass / numSegments;
+
         for (int i = 0; i <= numSegments; i++)
         {
-            //P_i = Start + d * (i * L_segment)
-            // If it's the last point, pin it to the top of the bucket!
             if (i == numSegments)
                 positions[i] = attachPoint;
             else
                 positions[i] = hangPoint.position + direction * segmentLength * i;
 
             previousPositions[i] = positions[i];
-        }
 
+
+            if (i == 0)
+                inverseMasses[i] = 0f;
+            else if (i == numSegments)
+                inverseMasses[i] = 0f;
+            else
+                inverseMasses[i] = (segmentMass > 0) ? 1.0f / segmentMass : 0f;
+        }
     }
 
-
-    //(2nd step) : Verlet integration, we make the points move according to the physics
-    void Simulate(float dt)
+    void Simulate(float dt, float dampingFactor)
     {
-        //||delta||^2 , out the loop to make it easier for the GPU
         float dtSquared = dt * dt;
 
-        for (int i = 1; i < numSegments; i++) //skip i = 0 (hangpoint) and i = numSegments (bucket), they are pinned
+        for (int i = 1; i < numSegments; i++)
         {
-            //d = P_old - P_older
             Vector3 velocity = positions[i] - previousPositions[i];
-            velocity *= 0.99f; // to drain a tiny bit of energy to avoid infinite oscillation
-            //P_new = P_old + (P_old - P_older) + (A * delta^2)
-            Vector3 newPosition = positions[i] + velocity + Vector3.down * gravity * dtSquared; //a = g , vector down is the direction
-            //update the positions : current position -> previous ,  new  -> current 
+            velocity *= dampingFactor;
+            Vector3 newPosition = positions[i] + velocity + Vector3.down * gravity * dtSquared;
             previousPositions[i] = positions[i];
             positions[i] = newPosition;
         }
     }
 
-    //(3rd step) : Apply constraints relaxation , to keep the distsnce between the segments static / constant
-    void ApplyConstraints()
+    void ApplyConstraints(float stiffnessFactor, int iterations)
     {
-        //pinned points
+        // Pin endpoints
         previousPositions[numSegments] = positions[numSegments];
         positions[numSegments] = bucket.TransformPoint(bucketTopOffset);
-        for (int iter = 0; iter < constraintIterations; iter++)    //iteration to reduce the erros
+        positions[0] = hangPoint.position;
+
+        for (int iter = 0; iter < iterations; iter++)
         {
-            //we go over each pair of points
             for (int i = 0; i < numSegments; i++)
             {
-                //delta  = P_i+1 - P_i
                 Vector3 delta = positions[i + 1] - positions[i];
-                //d = ||delta|| 
                 float currentDistance = delta.magnitude;
-                //divide by zero check
                 if (currentDistance == 0f) continue;
-                //Error = (d - L_segment) / d
-                float difference = (currentDistance - segmentLength) / currentDistance;
-                //Correction = delta * Error * 0.5
-                Vector3 correction = delta * difference * 0.5f;
 
-                if (i != 0) //pinned 
-                    positions[i] += correction;
-                if (i + 1 != numSegments)//pinned
-                    positions[i + 1] -= correction;
+                float w1 = inverseMasses[i];
+                float w2 = inverseMasses[i + 1];
+                float totalInverseMass = w1 + w2;
+
+                if (totalInverseMass == 0f) continue;
+
+                float difference = (currentDistance - segmentLength) / currentDistance;
+                Vector3 correction = delta * difference;
+
+
+                correction *= stiffnessFactor;
+
+                if (w1 > 0) positions[i] += correction * (w1 / totalInverseMass);
+                if (w2 > 0) positions[i + 1] -= correction * (w2 / totalInverseMass);
             }
 
+            // Re-pin endpoints after solving
             positions[0] = hangPoint.position;
             positions[numSegments] = bucket.TransformPoint(bucketTopOffset);
         }
@@ -161,9 +242,6 @@ public class Rope : MonoBehaviour
 
 
 
-
-    //(4th step) : Update the vertex positions 
-    //Tangent : direction, Normal : Right/left, Binormal : forwad/backward
     void UpdateVertexPositions()
     {
 
@@ -214,10 +292,6 @@ public class Rope : MonoBehaviour
 
 
 
-
-
-
-
     void InitializeMeshComponents()
     {
         meshFilter = GetComponent<MeshFilter>();
@@ -235,8 +309,6 @@ public class Rope : MonoBehaviour
         meshFilter.mesh = ropeMesh;
     }
 
-
-    // to optimize the work, we calculate the data of the whole rope and allocate the needed memory for it and it runs only once
     void AllocateMeshData()
     {
         int numPoints = numSegments + 1;//31 point
@@ -290,8 +362,6 @@ public class Rope : MonoBehaviour
         ropeMesh.triangles = triangles;
         ropeMesh.uv = uv;
     }
-
-
 
 
 
