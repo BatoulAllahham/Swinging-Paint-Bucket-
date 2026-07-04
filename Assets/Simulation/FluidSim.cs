@@ -42,14 +42,14 @@ namespace Seb.Fluid.Simulation
 		public float targetDensity = 630;
 		public float pressureMultiplier = 288;
 		public float nearPressureMultiplier = 2.15f;
-	
+
 
 		[Header("Viscoelastic Settings")]
 		public float springStiffness = 0.3f;
 		public float plasticityRate = 0.3f;
 		public float yieldRatio = 0.1f;
 		public float viscosityStrength = 0;
-				public struct Spring 
+		public struct Spring
 		{
 			public int neighborIndex;
 			public float restLength;
@@ -122,11 +122,11 @@ namespace Seb.Fluid.Simulation
 		ComputeBuffer sortTarget_positionBuffer;
 		ComputeBuffer sortTarget_velocityBuffer;
 		ComputeBuffer sortTarget_predictedPositionsBuffer;
-		
+
 		// Spring and Mapping Buffers
-        public ComputeBuffer springBuffer;
-        ComputeBuffer sortTarget_springBuffer;
-        ComputeBuffer originalToNewIndexBuffer;
+		public ComputeBuffer springBuffer;
+		ComputeBuffer sortTarget_springBuffer;
+		ComputeBuffer originalToNewIndexBuffer;
 
 		// Kernel IDs
 		const int externalForcesKernel = 0;
@@ -144,7 +144,7 @@ namespace Seb.Fluid.Simulation
 		const int foamReorderCopyBackKernel = 12;
 		const int updateSpringsKernel = 13;
 		const int applySpringForcesKernel = 14;
-        const int mapOriginalToNewKernel = 15;
+		const int mapOriginalToNewKernel = 15;
 
 		SpatialHash spatialHash;
 
@@ -173,7 +173,7 @@ namespace Seb.Fluid.Simulation
 					targetDensity = 2000f;
 					pressureMultiplier = 90f;
 					nearPressureMultiplier = 90f;
-					viscosityStrength = 0.05f;
+					viscosityStrength = 0.0f;
 					// holeSize = 0.011f;
 					break;
 				case PaintType.WallPaint:
@@ -181,7 +181,7 @@ namespace Seb.Fluid.Simulation
 					targetDensity = 2000f;
 					pressureMultiplier = 90f;
 					nearPressureMultiplier = 90f;
-					viscosityStrength = 0.05f;
+					viscosityStrength = 0.0004f;
 					// holeSize = 0.011f;
 					break;
 				case PaintType.Acrylic:
@@ -189,7 +189,7 @@ namespace Seb.Fluid.Simulation
 					targetDensity = 2000f;
 					pressureMultiplier = 90f;
 					nearPressureMultiplier = 90f;
-					viscosityStrength = 0.05f;
+					viscosityStrength = 0.0002f;
 					// holeSize = 0.011f;
 					break;
 			}
@@ -229,17 +229,17 @@ namespace Seb.Fluid.Simulation
 			bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
 			// Spring Allocations (8 slots per particle)
-			springBuffer = new ComputeBuffer(numParticles * 8, 8); 
-            sortTarget_springBuffer = new ComputeBuffer(numParticles * 8, 8);
-            originalToNewIndexBuffer = CreateStructuredBuffer<uint>(numParticles);
+			springBuffer = new ComputeBuffer(numParticles * 8, 8);
+			sortTarget_springBuffer = new ComputeBuffer(numParticles * 8, 8);
+			originalToNewIndexBuffer = CreateStructuredBuffer<uint>(numParticles);
 
 			Spring[] initialSprings = new Spring[numParticles * 8];
-			for (int i = 0; i < initialSprings.Length; i++) 
+			for (int i = 0; i < initialSprings.Length; i++)
 			{
 				initialSprings[i] = new Spring { neighborIndex = -1, restLength = 0 };
 			}
-            springBuffer.SetData(initialSprings);
-			
+			springBuffer.SetData(initialSprings);
+
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
 
@@ -260,8 +260,8 @@ namespace Seb.Fluid.Simulation
 				{ sortTarget_stateBuffer, "SortTarget_ParticleStates" },
 				{ flowResultBuffer, "FlowResultBuffer" },
 				{ springBuffer, "Springs" },
-                { sortTarget_springBuffer, "SortTarget_Springs" },
-                { originalToNewIndexBuffer, "OriginalToNewIndices" }
+				{ sortTarget_springBuffer, "SortTarget_Springs" },
+				{ originalToNewIndexBuffer, "OriginalToNewIndices" }
 			};
 
 			// Set buffer data
@@ -284,8 +284,8 @@ namespace Seb.Fluid.Simulation
 				predictedPositionsBuffer,
 				spatialHash.SpatialIndices
 				});
-		    // Map Kernel
-            SetBuffers(compute, mapOriginalToNewKernel, bufferNameLookup, new ComputeBuffer[] { spatialHash.SpatialIndices, originalToNewIndexBuffer });
+			// Map Kernel
+			SetBuffers(compute, mapOriginalToNewKernel, bufferNameLookup, new ComputeBuffer[] { spatialHash.SpatialIndices, originalToNewIndexBuffer });
 
 			// Reorder kernel
 			SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
@@ -301,9 +301,9 @@ namespace Seb.Fluid.Simulation
 			// Manually bind GraphicsBuffer for the shader graph
 			compute.SetBuffer(reorderKernel, "Positions", positionBuffer);
 
-			 SetBuffers(compute, reorderSpringsKernel, bufferNameLookup, new ComputeBuffer[] {
-                spatialHash.SpatialIndices, springBuffer, sortTarget_springBuffer, originalToNewIndexBuffer
-            });
+			SetBuffers(compute, reorderSpringsKernel, bufferNameLookup, new ComputeBuffer[] {
+				spatialHash.SpatialIndices, springBuffer, sortTarget_springBuffer, originalToNewIndexBuffer
+			});
 
 			// Reorder copyback kernel
 			SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
@@ -320,8 +320,8 @@ namespace Seb.Fluid.Simulation
 			compute.SetBuffer(reorderCopybackKernel, "Positions", positionBuffer);
 
 			SetBuffers(compute, reorderSpringsCopybackKernel, bufferNameLookup, new ComputeBuffer[] {
-                springBuffer, sortTarget_springBuffer
-            });
+				springBuffer, sortTarget_springBuffer
+			});
 
 			// Density kernel
 			SetBuffers(compute, densityKernel, bufferNameLookup, new ComputeBuffer[]
@@ -379,7 +379,7 @@ namespace Seb.Fluid.Simulation
 
 			SetBuffers(compute, updateSpringsKernel, bufferNameLookup, new ComputeBuffer[] { predictedPositionsBuffer, spatialHash.SpatialKeys, spatialHash.SpatialOffsets, springBuffer });
 			SetBuffers(compute, applySpringForcesKernel, bufferNameLookup, new ComputeBuffer[] { predictedPositionsBuffer, velocityBuffer, springBuffer });
-			
+
 
 			// Foam update kernel
 			SetBuffers(compute, foamUpdateKernel, bufferNameLookup, new ComputeBuffer[]
@@ -502,9 +502,9 @@ namespace Seb.Fluid.Simulation
 		public void ResetParticles()
 		{
 			if (spawnData.points == null || positionBuffer == null) return;
-			var positions  = System.Array.ConvertAll(spawnData.points, p => (Vector3)p);
+			var positions = System.Array.ConvertAll(spawnData.points, p => (Vector3)p);
 			var velocities = new Vector3[positions.Length];
-			var states     = new int[positions.Length]; // all 0 = fluid
+			var states = new int[positions.Length]; // all 0 = fluid
 			positionBuffer.SetData(positions);
 			velocityBuffer.SetData(velocities);
 			stateBuffer.SetData(states);
@@ -582,7 +582,7 @@ namespace Seb.Fluid.Simulation
 			Dispatch(compute, positionBuffer.count, kernelIndex: reorderSpringsKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: reorderCopybackKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: reorderSpringsCopybackKernel);
-   			Dispatch(compute, positionBuffer.count, kernelIndex: updateSpringsKernel);
+			Dispatch(compute, positionBuffer.count, kernelIndex: updateSpringsKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: densityKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
 			if (viscosityStrength != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
@@ -679,7 +679,7 @@ namespace Seb.Fluid.Simulation
 			// mixRate and wetnessGloss are strictly binary: watercolor (viscosity==0) vs everything else.
 			// Any positive viscosity means a non-mixing paint — no partial rates.
 			bool isWatercolor = viscosityStrength <= 0f;
-			compute.SetFloat("paintMixRate",      isWatercolor ? 1.0f : 0.0f);
+			compute.SetFloat("paintMixRate", isWatercolor ? 1.0f : 0.0f);
 			compute.SetFloat("paintWetnessGloss", isWatercolor ? 0.4f : 0.0f);
 
 			// flowRate: exponential decay — watercolor(0)→1.0, wallpaint(0.5)→0.05, beyond→<0.05

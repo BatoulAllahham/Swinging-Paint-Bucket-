@@ -893,15 +893,20 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                         continue;
 
                     float4 accum = PaintAccumTexture[p];
-                    float newMass = accum.a + alpha;
-                    float3 avgPig = (accum.a * accum.rgb + alpha * newPigment) / max(newMass, 0.001);
-                    PaintAccumTexture[p] = float4(avgPig, newMass);
+                    float storedMassT   = accum.a;
+                    bool incomingWaterT = paintMixRate > 0.5;
+                    bool storedWaterT   = PaintStyleTexture[p].r > 0.2;
+                    float effOldT = (incomingWaterT && storedWaterT) ? min(storedMassT, 0.5) : 0.0;
+                    float3 avgPig = (effOldT * accum.rgb + alpha * newPigment) / max(effOldT + alpha, 0.001);
+                    PaintAccumTexture[p] = float4(avgPig, storedMassT + alpha);
+                    PaintStyleTexture[p] = float2(paintWetnessGloss, PaintStyleTexture[p].g);
 
                     float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
-                    // THICKNESS: trail accumulates height instead of setting alpha=1.0 (avoids tessellation spike)
-                    // OLD (25bfa76): PaintTexture[p] = float4(color, 1.0);
                     float oldTrailThick = PaintTexture[p].a;
-                    PaintTexture[p] = float4(color, min(oldTrailThick + alpha * paintLayerThickness * 0.3, 1.0));
+                    float trailVisRate = (effectiveAbsorb < 0.05)
+                        ? max(paintLayerThickness * 0.8, 0.08)
+                        : max(paintLayerThickness * 0.5, 0.02);
+                    PaintTexture[p] = float4(color, min(oldTrailThick + alpha * trailVisRate, 1.0));
                 }
         }
         else
