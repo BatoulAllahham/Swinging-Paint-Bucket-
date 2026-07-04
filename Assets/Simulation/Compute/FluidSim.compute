@@ -1083,7 +1083,12 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float finalSize =
     baseSize * paintSize * surfaceSize * motionSize * spreadScale;
 
-        int radius = max(1, (int) round(finalSize));
+        float minRadius =
+    lerp(2.5, 4.0, absorb) * 
+    lerp(1.0, 1.4, rough) *
+    lerp(1.2, 0.85, paintFlowRate); 
+
+        int radius = max((int) round(minRadius), (int) round(finalSize));
         // ENVIRONMENT
         // int radius = max(3, (int)(lerp(2, 10, absorb + rough * 0.5) * spreadScale * tempSpreadFactor * (1.0 + humiditySpreadBonus)));
 
