@@ -860,8 +860,25 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
         //radius = max(radius, 1);
         float spreadScale = lerp(1.0, paintSpread, paintFlowRate);
-        int radius = max(3, (int)(lerp(2, 10, absorb + rough * 0.5) * spreadScale));
+        
 
+        
+
+        float baseSize = lerp(2.0, 10.0, absorb + rough * 0.5);
+
+        float paintSize =
+    lerp(0.7, 1.5, paintMixRate) *
+    lerp(0.8, 1.2, paintFlowRate);
+        float surfaceSize =
+    1.0 + (absorb * 0.6) - (rough * 0.4);
+
+        float motionSize =
+    1.0 + saturate(length(vT) * 2.5) * 0.4;
+
+        float finalSize =
+    baseSize * paintSize * surfaceSize * motionSize * spreadScale;
+
+        int radius = max(1, (int) round(finalSize));
         // ENVIRONMENT
         // int radius = max(3, (int)(lerp(2, 10, absorb + rough * 0.5) * spreadScale * tempSpreadFactor * (1.0 + humiditySpreadBonus)));
 
@@ -960,17 +977,13 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float tiltAmount = 1.0 - flatness;
 
 // تمدد البقعة حسب الميل
-                float stretch = lerp(1.0, 5.5, pow(max(0.0, tiltAmount), 1.7));
-// إسقاط النقطة على اتجاه السيلان
+
+                float stretch = 1.0; // إسقاط النقطة على اتجاه السيلان
                 float alongFlow = dot(float2(x, y), flowDir);
                 float acrossFlow = dot(float2(x, y), float2(-flowDir.y, flowDir.x));
 
 // دائرة إذا أفقي، بيضاوي إذا مائل
-                float distF = sqrt(
-    (alongFlow * alongFlow) / (radius * radius * stretch * stretch) +
-    (acrossFlow * acrossFlow) / (radius * radius)
-);
-
+                float distF = length(float2(x, y)) / radius;
                 float alpha = saturate(1.0 - distF);
                 alpha *= (1.0 - rough * distF);
                 alpha *= (1.0 - effectiveAbsorb * 0.5);
