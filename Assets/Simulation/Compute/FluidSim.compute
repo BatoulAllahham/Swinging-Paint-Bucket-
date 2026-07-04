@@ -1,14 +1,19 @@
 ﻿#pragma kernel ExternalForces
 #pragma kernel UpdateSpatialHash
 #pragma kernel Reorder
-#pragma kernel ReorderCopyBack;
+#pragma kernel ReorderSprings
+#pragma kernel ReorderCopyBack
+#pragma kernel ReorderSpringsCopyBack
 #pragma kernel CalculateDensities
 #pragma kernel CalculatePressureForce
 #pragma kernel CalculateViscosity
 #pragma kernel UpdatePositions
 #pragma kernel UpdateDensityTexture
 #pragma kernel UpdateWhiteParticles
-#pragma kernel WhiteParticlePrepareNextFrame;
+#pragma kernel WhiteParticlePrepareNextFrame
+#pragma kernel UpdateSprings
+#pragma kernel ApplySpringForces
+#pragma kernel MapOriginalToNew
 
 // Includes
 #include "./FluidMaths3D.hlsl"
@@ -23,6 +28,15 @@ RWStructuredBuffer<float3> Positions;
 RWStructuredBuffer<float3> PredictedPositions;
 RWStructuredBuffer<float3> Velocities;
 RWStructuredBuffer<float2> Densities; // Density, Near Density
+struct Spring 
+{
+    int neighborIndex;
+    float restLength;
+};
+// Spring Buffers
+RWStructuredBuffer<Spring> Springs;
+RWStructuredBuffer<Spring> SortTarget_Springs;
+RWStructuredBuffer<uint> OriginalToNewIndices;
 
 // Spatial hashing
 RWStructuredBuffer<uint> SpatialKeys;
@@ -45,6 +59,9 @@ const float viscosityStrength;
 const float edgeForce;
 const float edgeForceDst;
 const float3 boundsSize;
+const float springStiffness;
+const float plasticityRate;
+const float yieldRatio;
 
 RWStructuredBuffer<int> BucketParticleCount;
 const float4x4 localToWorld;
@@ -250,6 +267,36 @@ void ResolveCollisions(uint particleID, inout float3 pos, inout float3 vel, floa
     pos = mul(localToWorld, float4(posLocal, 1)).xyz;
     vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
 }
+// void ResolveCollisions(uint particleID,inout float3 pos, inout float3 vel, float collisionDamping)
+// {
+//     // Transform position/velocity to the local space of the bounding box
+//     float3 posLocal = mul(worldToLocal, float4(pos, 1)).xyz;
+//     float3 velocityLocal = mul(worldToLocal, float4(vel, 0)).xyz;
+
+//     // Calculate distance from box on each axis (negative values are outside box)
+//     const float3 halfSize = 0.5;
+//     const float3 edgeDst = halfSize - abs(posLocal);
+
+//     // Resolve collisions
+//     if (edgeDst.x <= 0)
+//     {
+//         posLocal.x = halfSize.x * sign(posLocal.x);
+//         velocityLocal.x *= -1 * collisionDamping;
+//     }
+//     if (edgeDst.y <= 0)
+//     {
+//         posLocal.y = halfSize.y * sign(posLocal.y);
+//         velocityLocal.y *= -1 * collisionDamping;
+//     }
+//     if (edgeDst.z <= 0)
+//     {
+//         posLocal.z = halfSize.z * sign(posLocal.z);
+//         velocityLocal.z *= -1 * collisionDamping;
+//     }
+
+//     pos = mul(localToWorld, float4(posLocal, 1)).xyz;
+//     vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
+// }
 [numthreads(ThreadGroupSize, 1, 1)]
 void ExternalForces(uint3 id : SV_DispatchThreadID)
 {
@@ -278,6 +325,12 @@ void UpdateSpatialHash(uint3 id : SV_DispatchThreadID)
     SpatialKeys[id.x] = key;
 }
 
+[numthreads(ThreadGroupSize, 1, 1)]
+void MapOriginalToNew(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+    OriginalToNewIndices[SortedIndices[id.x]] = id.x;
+}
 
 RWStructuredBuffer<float3> SortTarget_Positions;
 RWStructuredBuffer<float3> SortTarget_PredictedPositions;
@@ -295,6 +348,26 @@ void Reorder(uint3 id : SV_DispatchThreadID)
     SortTarget_Velocities[id.x] = Velocities[sortedIndex];
     SortTarget_ParticleStates[id.x] = ParticleStates[SortedIndices[id.x]];
 }
+// Separate kernel to avoid hitting the 8-UAV GPU Hardware Limit
+[numthreads(ThreadGroupSize, 1, 1)]
+void ReorderSprings(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+    uint sortedIndex = SortedIndices[id.x];
+
+    // Re-map the neighbor indices inside the springs
+    for (int s = 0; s < 8; s++) 
+    {
+        Spring spring = Springs[sortedIndex * 8 + s];
+        if (spring.neighborIndex != -1) 
+        {
+            spring.neighborIndex = OriginalToNewIndices[spring.neighborIndex];
+        }
+        SortTarget_Springs[id.x * 8 + s] = spring;
+    }
+}
+
 
 [numthreads(ThreadGroupSize, 1, 1)]
 void ReorderCopyBack(uint3 id : SV_DispatchThreadID)
@@ -306,6 +379,19 @@ void ReorderCopyBack(uint3 id : SV_DispatchThreadID)
     PredictedPositions[id.x] = SortTarget_PredictedPositions[id.x];
     Velocities[id.x] = SortTarget_Velocities[id.x];
     ParticleStates[id.x] = SortTarget_ParticleStates[id.x];
+}
+// Separate copy back kernel
+[numthreads(ThreadGroupSize, 1, 1)]
+void ReorderSpringsCopyBack(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    // Copy springs back
+    for (int s = 0; s < 8; s++) 
+    {
+        Springs[id.x * 8 + s] = SortTarget_Springs[id.x * 8 + s];
+    }
 }
 
 float2 CalculateDensitiesAtPoint(float3 pos)
@@ -533,6 +619,125 @@ void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
             WhiteParticles[particleIndex + spawnIndex] = whiteParticle;
         }
     }
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void UpdateSprings(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+
+    float3 pos = PredictedPositions[id.x];
+    int3 originCell = GetCell3D(pos, smoothingRadius);
+    float h = smoothingRadius;
+
+    // PART A: Update existing springs (Plasticity & Breaking)
+    for (int s = 0; s < 8; s++)
+    {
+        int springIdx = id.x * 8 + s;
+        Spring spring = Springs[springIdx];
+
+        if (spring.neighborIndex != -1)
+        {
+            float3 neighborPos = PredictedPositions[spring.neighborIndex];
+            float r = length(neighborPos - pos);
+
+            // Break spring if it stretches too far
+            if (r > h || spring.restLength > h)
+            {
+                Springs[springIdx].neighborIndex = -1;
+                continue;
+            }
+
+            // Plasticity: permanently deform the rest length
+            float deformation = r - spring.restLength;
+            float elasticLimit = yieldRatio * spring.restLength;
+
+            if (abs(deformation) > elasticLimit)
+            {
+                float signDeform = sign(deformation);
+                float delta = plasticityRate * (deformation - signDeform * elasticLimit) * deltaTime;
+                Springs[springIdx].restLength += delta;
+            }
+        }
+    }
+
+    // PART B: Spawn new springs using neighbor search
+    for (int i = 0; i < 27; i++)
+    {
+        uint hash = HashCell3D(originCell + offsets3D[i]);
+        uint key = KeyFromHash(hash, numParticles);
+        uint currIndex = SpatialOffsets[key];
+
+        while (currIndex < numParticles)
+        {
+            uint neighborIndex = currIndex;
+            currIndex++;
+
+            if (neighborIndex == id.x) continue;
+            if (SpatialKeys[neighborIndex] != key) break;
+
+            float r = length(PredictedPositions[neighborIndex] - pos);
+
+            if (r < h)
+            {
+                bool exists = false;
+                int emptySlot = -1;
+
+                // Check if spring already exists, or find an empty slot
+                for (int j = 0; j < 8; j++)
+                {
+                    int slot = id.x * 8 + j;
+                    if (Springs[slot].neighborIndex == (int)neighborIndex) exists = true;
+                    if (Springs[slot].neighborIndex == -1 && emptySlot == -1) emptySlot = slot;
+                }
+
+                // Create the spring!
+                if (!exists && emptySlot != -1)
+                {
+                    Springs[emptySlot].neighborIndex = neighborIndex;
+                    Springs[emptySlot].restLength = h;
+                }
+            }
+        }
+    }
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void ApplySpringForces(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+
+    float3 pos = PredictedPositions[id.x];
+    float3 velocity = Velocities[id.x];
+    float h = smoothingRadius;
+    float3 springForce = 0;
+
+    for (int s = 0; s < 8; s++)
+    {
+        Spring spring = Springs[id.x * 8 + s];
+
+        if (spring.neighborIndex != -1)
+        {
+            float3 neighborPos = PredictedPositions[spring.neighborIndex];
+            float3 offset = neighborPos - pos;
+            float r = length(offset);
+
+            if (r > 0)
+            {
+                float3 dir = offset / r;
+                float L = spring.restLength;
+
+                // Hooke's Law from the paper
+                float3 acceleration = springStiffness * (1.0 - (L / h)) * (L - r) * dir;
+                
+                // Add to total force (divided by 2 for Newton's 3rd law symmetry)
+                springForce -= acceleration * 0.5;
+            }
+        }
+    }
+
+    // Apply the spring acceleration directly to velocity
+    Velocities[id.x] = velocity + (springForce * deltaTime);
 }
 
 [numthreads(ThreadGroupSize, 1, 1)]

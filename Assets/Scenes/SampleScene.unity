@@ -548,7 +548,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e1093ff14e70c0f4895418961e178ecc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Rope
+  type: 0
   ropeLength: 10
+  totalRopeMass: 0.5
   hangPoint: {fileID: 1422597289}
   bucket: {fileID: 1032810835}
   bucketTopOffset: {x: 0, y: -1, z: 0}
@@ -588,7 +590,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holeSize
-      value: 0.05
+      value: 0.011
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: paintType
@@ -612,7 +614,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 30000
+      value: 800
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -636,11 +638,15 @@ PrefabInstance:
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
-      value: 0.05
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: springStiffness
+      value: 1000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
-      value: 0
+      value: 0.0004
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: weightPerParticle
@@ -652,11 +658,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 10
+      value: 200
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 5
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
@@ -688,7 +694,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: debug_num_particles
-      value: 29869
+      value: 3789
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: particleSpawnDensity
@@ -696,7 +702,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: simulationTargetDensity
-      value: 8000
+      value: 900
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: spawnRegions.Array.size
@@ -1401,6 +1407,7 @@ MonoBehaviour:
   hangPoint: {fileID: 1422597289}
   rope: {fileID: 552335637}
   bucketRadius: 1
+  straightnessFactor: 1
 --- !u!23 &1032810839
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2573,7 +2580,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holeSize
-      value: 0.05
+      value: 0.011
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: paintType
@@ -2597,7 +2604,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 30000
+      value: 800
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -2621,11 +2628,15 @@ PrefabInstance:
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
-      value: 0.05
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: springStiffness
+      value: 1000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
-      value: 0
+      value: 0.0004
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: weightPerParticle
@@ -2637,11 +2648,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 10
+      value: 200
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 5
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
@@ -2649,7 +2660,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
-      value: 0.185
+      value: 0.44
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: bucketTransform
@@ -2665,7 +2676,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: debug_num_particles
-      value: 33535
+      value: 9262
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: particleSpawnDensity
@@ -2673,7 +2684,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: simulationTargetDensity
-      value: 8000
+      value: 900
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: spawnRegions.Array.size

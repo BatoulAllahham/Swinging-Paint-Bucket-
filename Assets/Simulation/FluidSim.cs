@@ -42,7 +42,19 @@ namespace Seb.Fluid.Simulation
 		public float targetDensity = 630;
 		public float pressureMultiplier = 288;
 		public float nearPressureMultiplier = 2.15f;
+	
+
+		[Header("Viscoelastic Settings")]
+		public float springStiffness = 0.3f;
+		public float plasticityRate = 0.3f;
+		public float yieldRatio = 0.1f;
 		public float viscosityStrength = 0;
+				public struct Spring 
+		{
+			public int neighborIndex;
+			public float restLength;
+		}
+
 
 		public Transform floorTransform; // This will hold the actual Floor object
 		[Range(0, 1)] public float collisionDamping = 0.95f;
@@ -110,19 +122,29 @@ namespace Seb.Fluid.Simulation
 		ComputeBuffer sortTarget_positionBuffer;
 		ComputeBuffer sortTarget_velocityBuffer;
 		ComputeBuffer sortTarget_predictedPositionsBuffer;
+		
+		// Spring and Mapping Buffers
+        public ComputeBuffer springBuffer;
+        ComputeBuffer sortTarget_springBuffer;
+        ComputeBuffer originalToNewIndexBuffer;
 
 		// Kernel IDs
 		const int externalForcesKernel = 0;
 		const int spatialHashKernel = 1;
 		const int reorderKernel = 2;
-		const int reorderCopybackKernel = 3;
-		const int densityKernel = 4;
-		const int pressureKernel = 5;
-		const int viscosityKernel = 6;
-		const int updatePositionsKernel = 7;
-		const int renderKernel = 8;
-		const int foamUpdateKernel = 9;
-		const int foamReorderCopyBackKernel = 10;
+		const int reorderSpringsKernel = 3;
+		const int reorderCopybackKernel = 4;
+		const int reorderSpringsCopybackKernel = 5;
+		const int densityKernel = 6;
+		const int pressureKernel = 7;
+		const int viscosityKernel = 8;
+		const int updatePositionsKernel = 9;
+		const int renderKernel = 10;
+		const int foamUpdateKernel = 11;
+		const int foamReorderCopyBackKernel = 12;
+		const int updateSpringsKernel = 13;
+		const int applySpringForcesKernel = 14;
+        const int mapOriginalToNewKernel = 15;
 
 		SpatialHash spatialHash;
 
@@ -148,27 +170,27 @@ namespace Seb.Fluid.Simulation
 			{
 				case PaintType.Watercolor:
 					smoothingRadius = 0.2f;
-					targetDensity = 800f;
-					pressureMultiplier = 200f;
-					nearPressureMultiplier = 2f;
-					viscosityStrength = 0.0f;
-					holeSize = 0.011f;
+					targetDensity = 2000f;
+					pressureMultiplier = 90f;
+					nearPressureMultiplier = 90f;
+					viscosityStrength = 0.05f;
+					// holeSize = 0.011f;
 					break;
 				case PaintType.WallPaint:
 					smoothingRadius = 0.2f;
-					targetDensity = 800f;
-					pressureMultiplier = 200f;
-					nearPressureMultiplier = 2f;
-					viscosityStrength = 0.0004f;
-					holeSize = 0.011f;
+					targetDensity = 2000f;
+					pressureMultiplier = 90f;
+					nearPressureMultiplier = 90f;
+					viscosityStrength = 0.05f;
+					// holeSize = 0.011f;
 					break;
 				case PaintType.Acrylic:
 					smoothingRadius = 0.2f;
-					targetDensity = 800f;
-					pressureMultiplier = 200f;
-					nearPressureMultiplier = 2f;
-					viscosityStrength = 0.0002f;
-					holeSize = 0.011f;
+					targetDensity = 2000f;
+					pressureMultiplier = 90f;
+					nearPressureMultiplier = 90f;
+					viscosityStrength = 0.05f;
+					// holeSize = 0.011f;
 					break;
 			}
 		}
@@ -206,6 +228,18 @@ namespace Seb.Fluid.Simulation
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
 			bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
+			// Spring Allocations (8 slots per particle)
+			springBuffer = new ComputeBuffer(numParticles * 8, 8); 
+            sortTarget_springBuffer = new ComputeBuffer(numParticles * 8, 8);
+            originalToNewIndexBuffer = CreateStructuredBuffer<uint>(numParticles);
+
+			Spring[] initialSprings = new Spring[numParticles * 8];
+			for (int i = 0; i < initialSprings.Length; i++) 
+			{
+				initialSprings[i] = new Spring { neighborIndex = -1, restLength = 0 };
+			}
+            springBuffer.SetData(initialSprings);
+			
 			bufferNameLookup = new Dictionary<ComputeBuffer, string>
 			{
 
@@ -225,6 +259,9 @@ namespace Seb.Fluid.Simulation
 				{ stateBuffer, "ParticleStates" },
 				{ sortTarget_stateBuffer, "SortTarget_ParticleStates" },
 				{ flowResultBuffer, "FlowResultBuffer" },
+				{ springBuffer, "Springs" },
+                { sortTarget_springBuffer, "SortTarget_Springs" },
+                { originalToNewIndexBuffer, "OriginalToNewIndices" }
 			};
 
 			// Set buffer data
@@ -247,6 +284,8 @@ namespace Seb.Fluid.Simulation
 				predictedPositionsBuffer,
 				spatialHash.SpatialIndices
 				});
+		    // Map Kernel
+            SetBuffers(compute, mapOriginalToNewKernel, bufferNameLookup, new ComputeBuffer[] { spatialHash.SpatialIndices, originalToNewIndexBuffer });
 
 			// Reorder kernel
 			SetBuffers(compute, reorderKernel, bufferNameLookup, new ComputeBuffer[]
@@ -261,6 +300,11 @@ namespace Seb.Fluid.Simulation
 			});
 			// Manually bind GraphicsBuffer for the shader graph
 			compute.SetBuffer(reorderKernel, "Positions", positionBuffer);
+
+			 SetBuffers(compute, reorderSpringsKernel, bufferNameLookup, new ComputeBuffer[] {
+                spatialHash.SpatialIndices, springBuffer, sortTarget_springBuffer, originalToNewIndexBuffer
+            });
+
 			// Reorder copyback kernel
 			SetBuffers(compute, reorderCopybackKernel, bufferNameLookup, new ComputeBuffer[]
 			{
@@ -274,6 +318,10 @@ namespace Seb.Fluid.Simulation
 			});
 			// Manually bind GraphicsBuffer for the shader graph
 			compute.SetBuffer(reorderCopybackKernel, "Positions", positionBuffer);
+
+			SetBuffers(compute, reorderSpringsCopybackKernel, bufferNameLookup, new ComputeBuffer[] {
+                springBuffer, sortTarget_springBuffer
+            });
 
 			// Density kernel
 			SetBuffers(compute, densityKernel, bufferNameLookup, new ComputeBuffer[]
@@ -328,6 +376,10 @@ namespace Seb.Fluid.Simulation
 			});
 			int updatePosKernel = compute.FindKernel("UpdatePositions");
 			compute.SetBuffer(updatePosKernel, "BucketParticleCount", bucketCountBuffer);
+
+			SetBuffers(compute, updateSpringsKernel, bufferNameLookup, new ComputeBuffer[] { predictedPositionsBuffer, spatialHash.SpatialKeys, spatialHash.SpatialOffsets, springBuffer });
+			SetBuffers(compute, applySpringForcesKernel, bufferNameLookup, new ComputeBuffer[] { predictedPositionsBuffer, velocityBuffer, springBuffer });
+			
 
 			// Foam update kernel
 			SetBuffers(compute, foamUpdateKernel, bufferNameLookup, new ComputeBuffer[]
@@ -523,14 +575,20 @@ namespace Seb.Fluid.Simulation
 			Dispatch(compute, positionBuffer.count, kernelIndex: spatialHashKernel);
 			spatialHash.Run();
 
-			Dispatch(compute, positionBuffer.count, kernelIndex: reorderKernel);
-			Dispatch(compute, positionBuffer.count, kernelIndex: reorderCopybackKernel);
+			Dispatch(compute, positionBuffer.count, kernelIndex: mapOriginalToNewKernel);
 
+
+			Dispatch(compute, positionBuffer.count, kernelIndex: reorderKernel);
+			Dispatch(compute, positionBuffer.count, kernelIndex: reorderSpringsKernel);
+			Dispatch(compute, positionBuffer.count, kernelIndex: reorderCopybackKernel);
+			Dispatch(compute, positionBuffer.count, kernelIndex: reorderSpringsCopybackKernel);
+   			Dispatch(compute, positionBuffer.count, kernelIndex: updateSpringsKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: densityKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: pressureKernel);
 			if (viscosityStrength != 0) Dispatch(compute, positionBuffer.count, kernelIndex: viscosityKernel);
 			countResultData[0] = 0;
 			bucketCountBuffer.SetData(countResultData);
+			Dispatch(compute, positionBuffer.count, kernelIndex: applySpringForcesKernel);
 			Dispatch(compute, positionBuffer.count, kernelIndex: updatePositionsKernel);
 		}
 
@@ -674,6 +732,9 @@ namespace Seb.Fluid.Simulation
 			compute.SetFloat("pressureMultiplier", pressureMultiplier);
 			compute.SetFloat("nearPressureMultiplier", nearPressureMultiplier);
 			compute.SetFloat("viscosityStrength", viscosityStrength);
+			compute.SetFloat("springStiffness", springStiffness);
+			compute.SetFloat("plasticityRate", plasticityRate);
+			compute.SetFloat("yieldRatio", yieldRatio);
 
 			compute.SetVector("boundsSize", simBoundsSize);
 			compute.SetVector("centre", simBoundsCentre);
