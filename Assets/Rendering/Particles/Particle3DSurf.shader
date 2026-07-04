@@ -32,6 +32,7 @@ Shader "Fluid/Particle3DSurf"
         #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
 			StructuredBuffer<float3> Positions;
 			StructuredBuffer<float3> Velocities;
+			StructuredBuffer<int> States;
         #endif
 
 
@@ -59,10 +60,14 @@ Shader "Fluid/Particle3DSurf"
         {
             #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
 				float3 pos = Positions[unity_InstanceID];
+				// Once deposited (state 2), the canvas paint texture is the visual source of truth --
+				// hide the raw particle unconditionally instead of only while its speed is above a
+				// threshold, which on tilted surfaces flickers on/off for as long as it keeps sliding.
+				float s = (States[unity_InstanceID] == 2) ? 0.0 : scale;
 
-				unity_ObjectToWorld._11_21_31_41 = float4(scale, 0, 0, 0);
-				unity_ObjectToWorld._12_22_32_42 = float4(0, scale, 0, 0);
-				unity_ObjectToWorld._13_23_33_43 = float4(0, 0, scale, 0);
+				unity_ObjectToWorld._11_21_31_41 = float4(s, 0, 0, 0);
+				unity_ObjectToWorld._12_22_32_42 = float4(0, s, 0, 0);
+				unity_ObjectToWorld._13_23_33_43 = float4(0, 0, s, 0);
 				unity_ObjectToWorld._14_24_34_44 = float4(pos, 1);
 				unity_WorldToObject = unity_ObjectToWorld;
 				unity_WorldToObject._14_24_34 *= -1;

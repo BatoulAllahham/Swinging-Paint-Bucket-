@@ -65,6 +65,7 @@ namespace Seb.Fluid.Rendering
 					mat.SetBuffer("Positions", sim.positionBuffer);
 					mat.SetBuffer("Velocities", sim.velocityBuffer);
 					mat.SetBuffer("DebugBuffer", sim.debugBuffer);
+					mat.SetBuffer("States", sim.stateBuffer);
 
 
 					gradientTexture = new Texture2D(1, 1);
