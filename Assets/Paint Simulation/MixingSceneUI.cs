@@ -3,25 +3,34 @@ using PaintSim.Fluid.Simulation;
 
 // Attach to any empty GameObject. Wire bucketA, bucketB, canvasTransform in Inspector.
 // Press H to show/hide the panel so you can move the camera freely.
+//
+// Two-screen flow:
+//   Setup screen (before Start): choose paint type per bucket, canvas surface, and tilt.
+//   Running screen (after Start): only a viscosity slider per bucket + Reset.
+//   Reset clears the canvas, reseals both buckets, and returns to the Setup screen.
 public class MixingSceneUI : MonoBehaviour
 {
     [Header("Wire in Inspector")]
-    public FluidSim bucketA;
-    public FluidSim bucketB;
+    public FluidSim bucketA; // Red bucket
+    public FluidSim bucketB; // Yellow bucket
     public Transform canvasTransform;
 
     [Header("UI")]
     [Range(0.5f, 4f)] public float uiScale = 2f;
 
-    // Per-bucket color — initialized from FluidSim in Start()
-    Color _colA = Color.red;
-    Color _colB = Color.yellow;
+    // How far the hole opens when Start is pressed. Sealed (0) during setup and after Reset.
+    [Range(0.01f, 0.5f)] public float pourHoleSize = 0.1f;
+
+    // Live, shared hole size while running — drives both buckets. Initialized from
+    // pourHoleSize when Start is pressed; adjustable in the running screen from then on.
+    float _holeSize;
 
     // Canvas rotation per-axis
     float _tiltX, _tiltY, _tiltZ;
 
     Vector2 _scroll;
     bool _showUI = true;
+    bool _hasStarted;
 
     static readonly FluidSim.PaintType[] PaintTypes =
         { FluidSim.PaintType.Watercolor, FluidSim.PaintType.Acrylic, FluidSim.PaintType.WallPaint };
@@ -34,13 +43,11 @@ public class MixingSceneUI : MonoBehaviour
     static readonly string[] SurfaceNames = { "Canvas", "Wood", "Sponge", "Glass", "Plastic" };
 
     // SPH presets — mirrors OnValidate in FluidSim
-    // Hole starts at 0 so the bucket is closed on start (issue 5)
     static readonly float[] ViscPresets = { 0.0f, 0.0002f, 0.0004f };
     static readonly float[] RadiusPresets = { 0.2f, 0.2f, 0.2f };
     static readonly float[] DensPresets = { 800f, 800f, 800f };
     static readonly float[] PressPresets = { 200f, 200f, 200f };
     static readonly float[] NearPresets = { 2f, 2f, 2f };
-    static readonly float[] HolePresets = { 0f, 0f, 0f };
 
     GUIStyle _box, _lbl, _hdr, _btn, _btnActive;
     bool _stylesReady;
@@ -52,8 +59,8 @@ public class MixingSceneUI : MonoBehaviour
 
     void Start()
     {
-        if (bucketA != null) { _colA = bucketA.paintColour; bucketA.holeSize = 0f; }
-        if (bucketB != null) { _colB = bucketB.paintColour; bucketB.holeSize = 0f; }
+        if (bucketA != null) bucketA.holeSize = 0f;
+        if (bucketB != null) bucketB.holeSize = 0f;
         if (canvasTransform != null)
         {
             _tiltX = canvasTransform.localEulerAngles.x;
@@ -104,18 +111,35 @@ public class MixingSceneUI : MonoBehaviour
 
         float x = 8f, y = 8f, w = panelW - 30f;
 
-        y = DrawBucket(x, y, w, " Bucket A ", bucketA, ref _colA);
-        y += 12f;
-        y = DrawBucket(x, y, w, " Bucket B ", bucketB, ref _colB);
-        y += 12f;
-        y = DrawCanvasSection(x, y, w);
+        y = _hasStarted ? DrawRunningUI(x, y, w) : DrawSetupUI(x, y, w);
 
         GUI.EndScrollView();
     }
 
-    // ── Bucket panel ──────────────────────────────────────────────────────────
+    // ── Setup screen (UI1) ────────────────────────────────────────────────────
 
-    float DrawBucket(float x, float y, float w, string title, FluidSim sim, ref Color col)
+    float DrawSetupUI(float x, float y, float w)
+    {
+        y = DrawBucketSetup(x, y, w, "Yellow Bucket", bucketA);
+        y += 12f;
+        y = DrawBucketSetup(x, y, w, "Red Bucket", bucketB);
+        y += 12f;
+        y = DrawCanvasSetup(x, y, w);
+        y += 8f;
+
+        if (GUI.Button(new Rect(x, y, w, 30), "Start Simulation", _btn))
+        {
+            _hasStarted = true;
+            _holeSize = pourHoleSize;
+            if (bucketA != null) bucketA.holeSize = _holeSize;
+            if (bucketB != null) bucketB.holeSize = _holeSize;
+        }
+        y += 34f;
+
+        return y;
+    }
+
+    float DrawBucketSetup(float x, float y, float w, string title, FluidSim sim)
     {
         GUI.Label(new Rect(x, y, w, 18), title, _hdr); y += 22f;
 
@@ -125,22 +149,15 @@ public class MixingSceneUI : MonoBehaviour
             return y + 20f;
         }
 
-        // Color picker — show current value in label (fix issue 1)
-        GUI.Label(new Rect(x, y, w, 16), "Color", _lbl); y += 18f;
-        col.r = LabelSlider(x, y, w, $"R  {col.r:F2}", col.r, 0f, 1f); y += 20f;
-        col.g = LabelSlider(x, y, w, $"G  {col.g:F2}", col.g, 0f, 1f); y += 20f;
-        col.b = LabelSlider(x, y, w, $"B  {col.b:F2}", col.b, 0f, 1f); y += 20f;
-        sim.paintColour = col;
-
-        // Color swatch
+        // Color swatch — informational only, colour is fixed per bucket (not user-editable)
         var prev = GUI.color;
-        GUI.color = col;
-        GUI.DrawTexture(new Rect(x, y, w, 16), Texture2D.whiteTexture);
+        GUI.color = sim.paintColour;
+        GUI.DrawTexture(new Rect(x, y, w, 14), Texture2D.whiteTexture);
         GUI.color = prev;
-        y += 22f;
+        y += 20f;
 
         // Paint type presets
-        GUI.Label(new Rect(x, y, w, 16), "Paint Type (preset)", _lbl); y += 18f;
+        GUI.Label(new Rect(x, y, w, 16), "Paint Type", _lbl); y += 18f;
         float bw = (w - 4f) / 3f;
         for (int i = 0; i < PaintTypes.Length; i++)
         {
@@ -153,41 +170,18 @@ public class MixingSceneUI : MonoBehaviour
                 sim.targetDensity = DensPresets[i];
                 sim.pressureMultiplier = PressPresets[i];
                 sim.nearPressureMultiplier = NearPresets[i];
-                sim.holeSize = HolePresets[i];
             }
         }
         y += 26f;
 
-        // SPH sliders
-        GUI.Label(new Rect(x, y, w, 16), "SPH Parameters", _lbl); y += 18f;
-        sim.viscosityStrength = LabelSlider(x, y, w, $"Viscosity    {sim.viscosityStrength:F4}", sim.viscosityStrength, 0f, 50f); y += 20f;
-        sim.smoothingRadius = LabelSlider(x, y, w, $"Smooth R     {sim.smoothingRadius:F3}", sim.smoothingRadius, 0.05f, 1f); y += 20f;
-        sim.targetDensity = LabelSlider(x, y, w, $"Density      {sim.targetDensity:F0}", sim.targetDensity, 50f, 5000f); y += 20f;
-        sim.pressureMultiplier = LabelSlider(x, y, w, $"Pressure     {sim.pressureMultiplier:F0}", sim.pressureMultiplier, 10f, 1000f); y += 20f;
-        sim.nearPressureMultiplier = LabelSlider(x, y, w, $"Near Press   {sim.nearPressureMultiplier:F2}", sim.nearPressureMultiplier, 0f, 20f); y += 20f;
-        sim.holeSize = LabelSlider(x, y, w, $"Hole Size    {sim.holeSize:F3}", sim.holeSize, 0f, 0.5f); y += 20f;
-
-        // Spawner target density (spawn-time setting — takes effect after reset)
-        if (sim.spawner != null)
-        {
-            sim.spawner.simulationTargetDensity = Mathf.RoundToInt(
-                LabelSlider(x, y, w, $"Spawn Density {sim.spawner.simulationTargetDensity}", sim.spawner.simulationTargetDensity, 1f, 2000f));
-            y += 20f;
-        }
-        int total = sim.positionBuffer != null ? sim.positionBuffer.count : 0;
-        GUI.Label(new Rect(x, y, w, 18), $"Total: {total}  |  In bucket: {sim.currentParticleCount}", _lbl); y += 18f;
-        GUI.Label(new Rect(x, y, w, 16), "(Spawn Density takes effect after Reset)", _lbl); y += 20f;
-
         return y;
     }
 
-    // ── Canvas panel ──────────────────────────────────────────────────────────
-
-    float DrawCanvasSection(float x, float y, float w)
+    float DrawCanvasSetup(float x, float y, float w)
     {
         GUI.Label(new Rect(x, y, w, 18), " Canvas", _hdr); y += 22f;
 
-        // Tilt on all three axes (fix issue 3)
+        // Tilt on all three axes
         GUI.Label(new Rect(x, y, w, 16), "Rotation", _lbl); y += 18f;
         _tiltX = LabelSlider(x, y, w, $"X  {_tiltX:F0}°", _tiltX, -90f, 0f); y += 20f;
         _tiltY = LabelSlider(x, y, w, $"Y  {_tiltY:F0}°", _tiltY, -180f, 180f); y += 20f;
@@ -205,16 +199,55 @@ public class MixingSceneUI : MonoBehaviour
             bool active = bucketA != null && bucketA.surfaceType == SurfaceTypes[i];
             if (GUI.Button(new Rect(bx, by, bw, 22), SurfaceNames[i], active ? _btnActive : _btn))
             {
-                if (bucketA != null) bucketA.surfaceType = SurfaceTypes[i];
-                if (bucketB != null) bucketB.surfaceType = SurfaceTypes[i];
+                // ApplySurfacePreset() is called explicitly because setting surfaceType from script
+                // does not trigger FluidSim's OnValidate (that's an Editor-only Inspector callback) --
+                // without this, the bounce/roughness/absorption params actually used by the compute
+                // shader would never update.
+                if (bucketA != null) { bucketA.surfaceType = SurfaceTypes[i]; bucketA.ApplySurfacePreset(); }
+                if (bucketB != null) { bucketB.surfaceType = SurfaceTypes[i]; bucketB.ApplySurfacePreset(); }
             }
         }
         y += Mathf.CeilToInt(SurfaceTypes.Length / 3f) * 26f + 4f;
 
-        // Clear canvas + reset particles (fix issue 2)
-        if (GUI.Button(new Rect(x, y, w, 26), "Clear Canvas + Reset Particles", _btn))
+        return y;
+    }
+
+    // ── Running screen ────────────────────────────────────────────────────────
+
+    float DrawRunningUI(float x, float y, float w)
+    {
+        y = DrawViscositySlider(x, y, w, "Yellow Bucket", bucketA);
+        y += 10f;
+        y = DrawViscositySlider(x, y, w, "Red Bucket", bucketB);
+        y += 12f;
+
+        // Shared hole size — drives both buckets so they pour together.
+        _holeSize = LabelSlider(x, y, w, $"Hole Size    {_holeSize:F3}", _holeSize, 0f, 0.5f); y += 20f;
+        if (bucketA != null) bucketA.holeSize = _holeSize;
+        if (bucketB != null) bucketB.holeSize = _holeSize;
+        y += 8f;
+
+        if (GUI.Button(new Rect(x, y, w, 30), "Reset", _btn))
+        {
             ClearAll();
-        y += 30f;
+            _hasStarted = false;
+        }
+        y += 34f;
+
+        return y;
+    }
+
+    float DrawViscositySlider(float x, float y, float w, string title, FluidSim sim)
+    {
+        GUI.Label(new Rect(x, y, w, 18), title, _hdr); y += 22f;
+
+        if (sim == null)
+        {
+            GUI.Label(new Rect(x, y, w, 18), "(not assigned)", _lbl);
+            return y + 20f;
+        }
+
+        sim.viscosityStrength = LabelSlider(x, y, w, $"Viscosity    {sim.viscosityStrength:F4}", sim.viscosityStrength, 0f, 50f); y += 20f;
 
         return y;
     }

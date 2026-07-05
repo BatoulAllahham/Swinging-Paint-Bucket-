@@ -1,5 +1,7 @@
 using System;
+using System.Net.Sockets;
 using UnityEngine;
+using static UnityEngine.Rendering.DebugUI.Table;
 
 public class Pendulum : MonoBehaviour
 {
@@ -12,6 +14,9 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float phiAngularVelocity = 30.0f;
     [SerializeField] float thetaDegree = 45.0f;
     [SerializeField] float phiDegree = 45.0f;
+
+    [Header("Swinging Rate")]
+    [SerializeField] private float swingingRate;
 
     [Header("Forces")]
     [SerializeField] float gravity = 9.81f;
@@ -147,6 +152,14 @@ public class Pendulum : MonoBehaviour
     public float AirDensity { get => airDensity; set => airDensity = value; }
     public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
 
+
+
+    private Quaternion initialRotation;
+
+
+
+    private Quaternion initialRotation;
+
     float getXCoordinate()
     {
         float xCoordinate = ropeLength * Mathf.Sin(thetaRadian) * Mathf.Cos(phiRadian);
@@ -173,6 +186,8 @@ public class Pendulum : MonoBehaviour
 
 
 
+
+    //Bucket Velocity = How fast the rope rotates × How long the rope is  v = L *   sqrt(dot(theta)^2 + dot(phi)^2 * sin^2theta)
     float getSpeed(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
     {
         float sinTheta = Mathf.Sin(thetaRadian);
@@ -262,6 +277,7 @@ public class Pendulum : MonoBehaviour
 
     void Start()
     {
+        initialRotation = transform.rotation;
 
         mass = baseMass;
         ropeComponent = rope.GetComponent<Rope>();
@@ -279,6 +295,8 @@ public class Pendulum : MonoBehaviour
 
     private void FixedUpdate()
     {
+
+        swingingRate = getSpeed(thetaAngularVelo, phiAngularVelo, thetaRadian);
 
         //ropeLength = ropeComponent.CurrentStretchedLength;
        if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
@@ -299,14 +317,22 @@ public class Pendulum : MonoBehaviour
             phiRadian += state[3];          
 
             thetaDegree = thetaRadian * Mathf.Rad2Deg;
-            phiDegree = phiRadian * Mathf.Rad2Deg;
-        }
-        else if (!isSimulating && !isDragging)
+            phiDegree = phiRadian * Mathf.Rad2Deg;}
+
+            else if (!isSimulating && !isDragging)
         {
             thetaRadian = thetaDegree * Mathf.Deg2Rad;
             phiRadian = phiDegree * Mathf.Deg2Rad;
         }
            UpdateTransform();
+
+            //transform.up = (hangPoint.position - transform.position).normalized;
+
+            //transform.rotation = Quaternion.identity;
+
+
+
+        
         //UpdateRope();
 
 
@@ -316,9 +342,12 @@ public class Pendulum : MonoBehaviour
     {
         if (hangPoint == null) return; // Crash protection
         transform.position = getPosition() + hangPoint.position;
-        Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
-        Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
-        transform.rotation = Orientation * correction;
+        Vector3 ropeDirection = (hangPoint.position - transform.position).normalized;
+        transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection)* initialRotation;
+
+        // Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
+        // Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
+        // transform.rotation = Orientation * correction;
     }
 
 
@@ -340,6 +369,8 @@ public class Pendulum : MonoBehaviour
 
 
 
+
+    //FOLLOWED THIS APPROACH
     //last solution for the rotation of the bucket : 
     //private Quaternion initialRotation;
     //in the start method : initialRotation = transform.rotation;
