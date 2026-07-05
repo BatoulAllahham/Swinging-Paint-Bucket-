@@ -157,15 +157,27 @@ namespace Seb.Fluid.Simulation
 		Spawner3D.SpawnData spawnData;
 		Dictionary<ComputeBuffer, string> bufferNameLookup;
 
-		// Tracks the last applied paint type so OnValidate only resets SPH fields when
-		// paintType actually changes, not when the user edits any other Inspector field.
+		// Tracks the last applied paint type / surface type so OnValidate only re-applies presets
+		// when that specific field actually changed, not whenever any other Inspector field is edited.
 		[NonSerialized] PaintType _lastAppliedPaintType = (PaintType)(-1);
+		[NonSerialized] SurfaceType _lastAppliedSurfaceType = (SurfaceType)(-1);
 
 		void OnValidate()
 		{
-			if (paintType == _lastAppliedPaintType) return;
-			_lastAppliedPaintType = paintType;
+			if (paintType != _lastAppliedPaintType)
+			{
+				_lastAppliedPaintType = paintType;
+				ApplyPaintTypePreset();
+			}
+			if (surfaceType != _lastAppliedSurfaceType)
+			{
+				_lastAppliedSurfaceType = surfaceType;
+				ApplySurfacePreset();
+			}
+		}
 
+		void ApplyPaintTypePreset()
+		{
 			switch (paintType)
 			{
 				case PaintType.Watercolor:
@@ -193,6 +205,12 @@ namespace Seb.Fluid.Simulation
 					// holeSize = 0.011f;
 					break;
 			}
+		}
+
+		// Public so runtime UI (which sets surfaceType via script and therefore never triggers
+		// OnValidate) can apply the preset immediately instead of only on the next Editor edit.
+		public void ApplySurfacePreset()
+		{
             switch (surfaceType)
             {
                 case SurfaceType.Glass:
@@ -225,6 +243,7 @@ namespace Seb.Fluid.Simulation
                     absorptionOffset = 0.45f;
                     break;
             }
+            _lastAppliedSurfaceType = surfaceType;
         }
 
 		void Start()
