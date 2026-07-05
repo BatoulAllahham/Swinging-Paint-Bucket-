@@ -5,7 +5,7 @@ public class Pendulum : MonoBehaviour
 {
     //To connect the object in the scen with the script, they must have identical names to the ones in the scene
 
-
+ public bool isSimulating = false;
     [Header("Angles and Velocities")]
 
     [SerializeField] float thetaAngularVelocity = 30.0f;
@@ -139,6 +139,13 @@ public class Pendulum : MonoBehaviour
     //    isDragging = false;
     //    velocityBufferIndex = 0; // reset buffer for next drag
     //}
+    public float ThetaAngularVelocity { get => thetaAngularVelocity; set { thetaAngularVelocity = value; thetaAngularVelo = value * Mathf.Deg2Rad; } }
+    public float PhiAngularVelocity { get => phiAngularVelocity; set { phiAngularVelocity = value; phiAngularVelo = value * Mathf.Deg2Rad; } }
+    public float ThetaDegree { get => thetaDegree; set { thetaDegree = Mathf.Clamp(value, -90f, 90f); thetaRadian = thetaDegree * Mathf.Deg2Rad; } }
+    public float PhiDegree { get => phiDegree; set { phiDegree = value; phiRadian = value * Mathf.Deg2Rad; } }
+    public float Gravity { get => gravity; set => gravity = value; }
+    public float AirDensity { get => airDensity; set => airDensity = value; }
+    public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
 
     float getXCoordinate()
     {
@@ -243,7 +250,14 @@ public class Pendulum : MonoBehaviour
         return sum;
     }
 
-
+    public void ResetToInitial()
+    {
+        thetaRadian = thetaDegree * Mathf.Deg2Rad;
+        phiRadian = phiDegree * Mathf.Deg2Rad;
+        thetaAngularVelo = thetaAngularVelocity * Mathf.Deg2Rad;
+        phiAngularVelo = phiAngularVelocity * Mathf.Deg2Rad;
+        UpdateTransform();
+    }
 
 
     void Start()
@@ -267,49 +281,44 @@ public class Pendulum : MonoBehaviour
     {
 
         //ropeLength = ropeComponent.CurrentStretchedLength;
-        ropeLength = ropeComponent.RopeLength;
+       if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
         float normalizedTheta = Mathf.Abs(thetaDegree) / 45.0f;
         straightnessFactor = 1.0f - Mathf.Clamp01(normalizedTheta);
 
-        if (!isDragging)
+        if (isSimulating && !isDragging)
         {
-            // get mass for all the fluids carried at the moment in the racket from weight manager
-            if (weightManager != null)
-            {
-                mass = baseMass + weightManager.totalCombinedWeight;
-            }
+            if (weightManager != null) mass = baseMass + weightManager.totalCombinedWeight;
+            
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);
-            thetaAngularVelo += state[0];       //θ˙new​=θ˙old​+Δθ˙
-            phiAngularVelo += state[1];         //ϕ˙​new​=ϕ˙​old​+Δϕ˙​
+            thetaAngularVelo += state[0];       
+            phiAngularVelo += state[1];         
 
             thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg;
             phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg;
-
-            thetaRadian += state[2];      //equivalent to θnew​=θold​+Δθ       
-            phiRadian += state[3];          //ϕnew​=ϕold​+Δϕ
+            thetaRadian += state[2];      
+            phiRadian += state[3];          
 
             thetaDegree = thetaRadian * Mathf.Rad2Deg;
             phiDegree = phiRadian * Mathf.Rad2Deg;
-
-            transform.position = getPosition() + hangPoint.position;
-
-
-            Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
-            Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
-            transform.rotation = Orientation * correction;
-
-
-            //transform.up = (hangPoint.position - transform.position).normalized;
-
-            //transform.rotation = Quaternion.identity;
-
-
-
         }
+        else if (!isSimulating && !isDragging)
+        {
+            thetaRadian = thetaDegree * Mathf.Deg2Rad;
+            phiRadian = phiDegree * Mathf.Deg2Rad;
+        }
+           UpdateTransform();
         //UpdateRope();
 
 
 
+    }
+        void UpdateTransform()
+    {
+        if (hangPoint == null) return; // Crash protection
+        transform.position = getPosition() + hangPoint.position;
+        Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
+        Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
+        transform.rotation = Orientation * correction;
     }
 
 

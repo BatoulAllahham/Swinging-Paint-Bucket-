@@ -1,0 +1,175 @@
+using System;
+using UnityEngine;
+
+public class Pendulum : MonoBehaviour
+{
+    public bool isSimulating = false;
+
+    [Header("Angles and Velocities")]
+    [SerializeField] float thetaAngularVelocity = 30.0f;
+    [SerializeField] float phiAngularVelocity = 30.0f;
+    [SerializeField] float thetaDegree = 45.0f;
+    [SerializeField] float phiDegree = 45.0f;
+
+    [Header("Forces")]
+    [SerializeField] float gravity = 9.81f;
+    [SerializeField] float airDensity = 1.225f;
+    [SerializeField] float dragCoefficient = 1.0f;
+    [SerializeField] float mass = 1.0f;
+    
+    [Header("Dependencies")]
+    public TotalWeightManager weightManager;
+    private float baseMass = 1;
+
+    [Header("Objects")]
+    [SerializeField] Transform hangPoint;
+    [SerializeField] Transform rope;
+    public float bucketRadius = 1.0f;
+    private float ropeLength = 8.0f;
+    private Rope ropeComponent;
+
+    private float thetaRadian;
+    private float phiRadian;
+    private float thetaAngularVelo;
+    private float phiAngularVelo;
+    private bool isDragging = false;
+
+    public float straightnessFactor = 1.0f;
+
+    public float ThetaAngularVelocity { get => thetaAngularVelocity; set { thetaAngularVelocity = value; thetaAngularVelo = value * Mathf.Deg2Rad; } }
+    public float PhiAngularVelocity { get => phiAngularVelocity; set { phiAngularVelocity = value; phiAngularVelo = value * Mathf.Deg2Rad; } }
+    public float ThetaDegree { get => thetaDegree; set { thetaDegree = Mathf.Clamp(value, -90f, 90f); thetaRadian = thetaDegree * Mathf.Deg2Rad; } }
+    public float PhiDegree { get => phiDegree; set { phiDegree = value; phiRadian = value * Mathf.Deg2Rad; } }
+    public float Gravity { get => gravity; set => gravity = value; }
+    public float AirDensity { get => airDensity; set => airDensity = value; }
+    public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
+
+    float getXCoordinate() => ropeLength * Mathf.Sin(thetaRadian) * Mathf.Cos(phiRadian);
+    float getYCoordinate() => -ropeLength * Mathf.Cos(thetaRadian);
+    float getZCoordinate() => -ropeLength * Mathf.Sin(thetaRadian) * Mathf.Sin(phiRadian);
+    Vector3 getPosition() => new Vector3(getXCoordinate(), getYCoordinate(), getZCoordinate());
+
+    float getSpeed(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
+    {
+        float sinTheta = Mathf.Sin(thetaRadian);
+        return ropeLength * Mathf.Sqrt(thetaAngularVelo * thetaAngularVelo + sinTheta * sinTheta * phiAngularVelo * phiAngularVelo);
+    }
+
+    float getThetaAngularAcceleration(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
+    {
+        float sinTheta = Mathf.Sin(thetaRadian);
+        if (Mathf.Abs(sinTheta) < 0.001f) sinTheta = 0.0011f;
+
+        float conservative = phiAngularVelo * phiAngularVelo * sinTheta * Mathf.Cos(thetaRadian) - (gravity / ropeLength) * sinTheta;
+        float dragFactor = (0.5f * airDensity * dragCoefficient * Mathf.PI * bucketRadius * bucketRadius) / mass;
+        float drag = -dragFactor * getSpeed(thetaAngularVelo, phiAngularVelo, thetaRadian) * thetaAngularVelo;
+        return conservative + drag;
+    }
+
+    float getPhiAngularAcceleration(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
+    {
+        float sinTheta = Mathf.Sin(thetaRadian);
+        if (Mathf.Abs(sinTheta) < 0.001f) sinTheta = 0.0011f;
+
+        float conservative = -2.0f * (Mathf.Cos(thetaRadian) / sinTheta) * thetaAngularVelo * phiAngularVelo;
+        float dragFactor = (0.5f * airDensity * dragCoefficient * Mathf.PI * bucketRadius * bucketRadius) / mass;
+        float drag = -dragFactor * getSpeed(thetaAngularVelo, phiAngularVelo, thetaRadian) * phiAngularVelo;
+        return conservative + drag;
+    }
+
+    float[] Step(float thetaAngularVelo, float phiAngularVelo, float thetaRadian)
+    {
+        return new float[] {
+            getThetaAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
+            getPhiAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
+            thetaAngularVelo,
+            phiAngularVelo
+        };
+    }
+
+    float[] RungeKutta_4th(float dt)
+    {
+        float[] k1 = Step(thetaAngularVelo, phiAngularVelo, thetaRadian);
+        float[] k2 = Step(thetaAngularVelo + k1[0] * 0.5f * dt, phiAngularVelo + 0.5f * k1[1] * dt, thetaRadian + 0.5f * k1[2] * dt);
+        float[] k3 = Step(thetaAngularVelo + 0.5f * k2[0] * dt, phiAngularVelo + 0.5f * k2[1] * dt, thetaRadian + 0.5f * k2[2] * dt);
+        float[] k4 = Step(thetaAngularVelo + k3[0] * dt, phiAngularVelo + k3[1] * dt, thetaRadian + k3[2] * dt);
+
+        return new float[] {
+            dt * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) / 6,   
+            dt * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]) / 6,
+            dt * (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]) / 6,
+            dt * (k1[3] + 2*k2[3] + 2*k3[3] + k4[3]) / 6
+        };
+    }
+
+    public void ResetToInitial()
+    {
+        thetaRadian = thetaDegree * Mathf.Deg2Rad;
+        phiRadian = phiDegree * Mathf.Deg2Rad;
+        thetaAngularVelo = thetaAngularVelocity * Mathf.Deg2Rad;
+        phiAngularVelo = phiAngularVelocity * Mathf.Deg2Rad;
+        UpdateTransform();
+    }
+
+    void Start()
+    {
+        mass = baseMass;
+        if (rope != null) ropeComponent = rope.GetComponent<Rope>();
+        if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
+        ResetToInitial();
+    }
+
+    private void FixedUpdate()
+    {
+        if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
+        float normalizedTheta = Mathf.Abs(thetaDegree) / 45.0f;
+        straightnessFactor = 1.0f - Mathf.Clamp01(normalizedTheta);
+
+        if (isSimulating && !isDragging)
+        {
+            if (weightManager != null) mass = baseMass + weightManager.totalCombinedWeight;
+            
+            float[] state = RungeKutta_4th(Time.fixedDeltaTime);
+            thetaAngularVelo += state[0];       
+            phiAngularVelo += state[1];         
+
+            thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg;
+            phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg;
+            thetaRadian += state[2];      
+            phiRadian += state[3];          
+
+            thetaDegree = thetaRadian * Mathf.Rad2Deg;
+            phiDegree = phiRadian * Mathf.Rad2Deg;
+        }
+        else if (!isSimulating && !isDragging)
+        {
+            thetaRadian = thetaDegree * Mathf.Deg2Rad;
+            phiRadian = phiDegree * Mathf.Deg2Rad;
+        }
+
+        UpdateTransform();
+    }
+
+    void UpdateTransform()
+    {
+        if (hangPoint == null) return; // Crash protection
+        transform.position = getPosition() + hangPoint.position;
+        Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
+        Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
+        transform.rotation = Orientation * correction;
+    }
+
+    public Vector3 getLinearVelocity()
+    {
+        float cosTheta = Mathf.Cos(thetaRadian);
+        float sinTheta = Mathf.Sin(thetaRadian);
+        float cosPhi = Mathf.Cos(phiRadian);
+        float sinPhi = Mathf.Sin(phiRadian);
+
+        float vx = ropeLength * (thetaAngularVelo * cosTheta * cosPhi - phiAngularVelo * sinTheta * sinPhi);
+        float vy = ropeLength * thetaAngularVelo * sinTheta;
+        float vz = -ropeLength * (thetaAngularVelo * cosTheta * sinPhi + phiAngularVelo * sinTheta * cosPhi);
+
+        return new Vector3(vx, vy, vz);
+    }
+}

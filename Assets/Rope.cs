@@ -13,8 +13,8 @@ public class Rope : MonoBehaviour
 
 
 
-
-
+    public bool isSimulating = false;
+    
     [Header("References")]
     [SerializeField] Transform hangPoint;
     [SerializeField] Transform bucket;
@@ -22,14 +22,14 @@ public class Rope : MonoBehaviour
 
 
     [Header("Rope Settings")]
-    [SerializeField] int numSegments = 30;
-    [SerializeField] float ropeRadius = 0.05f;
-    [SerializeField] int radialSegments = 8;
+    [SerializeField] public int numSegments = 30;
+    [SerializeField] public float ropeRadius = 0.05f;
+    [SerializeField] public int radialSegments = 8;
 
     [Header("Physics")]
-    [SerializeField] float gravity = 9.81f;
-    [SerializeField] int constraintIterations = 15;
-    [SerializeField] int substeps = 4;
+    [SerializeField] public float gravity = 9.81f;
+    [SerializeField] public int constraintIterations = 15;
+    [SerializeField] public int substeps = 4;
 
     private Vector3[] positions;
     private Vector3[] previousPositions;
@@ -57,12 +57,35 @@ public class Rope : MonoBehaviour
     };
 
     //iteration 1->100, damping 0.9->1, stiffness 0.01->1.0, 
+    public RopeType Type { get => type; set => type = value; }
+    public float RopeLengthProperty { get => ropeLength; set { ropeLength = Mathf.Max(0.1f, value); } }
+    public float TotalRopeMass { get => totalRopeMass; set { totalRopeMass = Mathf.Max(0f, value); InitializeRope(); } }
+    public int NumSegments { get => numSegments; set { if (numSegments != value && value >= 2) { numSegments = value; RebuildRopeMeshStructure(); } } }
+    public float RopeRadius { get => ropeRadius; set => ropeRadius = Mathf.Max(0.001f, value); }
+    public int RadialSegments { get => radialSegments; set { if (radialSegments != value && value >= 3) { radialSegments = value; RebuildRopeMeshStructure(); } } }
+    public float Gravity { get => gravity; set => gravity = value; }
+    public int ConstraintIterations { get => constraintIterations; set => constraintIterations = Mathf.Max(1, value); }
+    public int Substeps { get => substeps; set => substeps = Mathf.Max(1, value); }
 
     void Start()
     {
         previousRopeLength = ropeLength;
+         RebuildRopeMeshStructure();
+        // InitializeRope();
+        // InitializeMeshComponents();
+        // AllocateMeshData();
+        // BuildStaticMeshData();
+        // UpdateVertexPositions();
+    }
+    public void ResetRope()
+    {
         InitializeRope();
+        UpdateVertexPositions();
+    }
+        public void RebuildRopeMeshStructure()
+    {
         InitializeMeshComponents();
+        InitializeRope();
         AllocateMeshData();
         BuildStaticMeshData();
         UpdateVertexPositions();
@@ -96,9 +119,10 @@ public class Rope : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (hangPoint == null) return; 
         // 1. Pin endpoints
-        Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
-        positions[0] = hangPoint.position;
+     Vector3 attachPoint = bucket != null ? bucket.TransformPoint(bucketTopOffset) : hangPoint.position + Vector3.down * ropeLength;
+         positions[0] = hangPoint.position;
         previousPositions[0] = hangPoint.position; // Hangpoint never moves
 
         positions[numSegments] = attachPoint;
@@ -115,7 +139,7 @@ public class Rope : MonoBehaviour
 
         var preset = Presets[(int)type];
 
-        if (type == RopeType.Metal || type == RopeType.Wooden)
+        if (!isSimulating  || type == RopeType.Metal || type == RopeType.Wooden)
         {
 
             for (int i = 1; i < numSegments; i++)
@@ -159,12 +183,13 @@ public class Rope : MonoBehaviour
 
     void InitializeRope()
     {
+          if (hangPoint == null) return;
         segmentLength = ropeLength / numSegments;
         positions = new Vector3[numSegments + 1];
         previousPositions = new Vector3[numSegments + 1];
         inverseMasses = new float[numSegments + 1];
 
-        Vector3 attachPoint = bucket.TransformPoint(bucketTopOffset);
+        Vector3 attachPoint = bucket != null ? bucket.TransformPoint(bucketTopOffset) : hangPoint.position + Vector3.down * ropeLength;
         Vector3 direction = (attachPoint - hangPoint.position).normalized;
         if (direction == Vector3.zero) direction = Vector3.down;
 
@@ -305,8 +330,11 @@ public class Rope : MonoBehaviour
             meshRenderer.material.color = new Color(0.6f, 0.4f, 0.2f);
         }
 
-        ropeMesh = new Mesh();
-        meshFilter.mesh = ropeMesh;
+       if (ropeMesh == null)
+        {
+            ropeMesh = new Mesh();
+            meshFilter.mesh = ropeMesh;
+        }
     }
 
     void AllocateMeshData()

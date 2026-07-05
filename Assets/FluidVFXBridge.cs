@@ -1,10 +1,10 @@
 using UnityEngine;
 using UnityEngine.VFX;
-using Seb.Fluid.Simulation;
+using PaintSim.Fluid.Simulation;
 
 public class FluidVFXBridge : MonoBehaviour
 {
-    [Tooltip("Reference to Sebastian Lague's FluidSim script")]
+    
     public FluidSim fluidSimulation;
     
     private VisualEffect vfxComponent;

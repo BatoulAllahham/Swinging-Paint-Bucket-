@@ -1,9 +1,9 @@
-using Seb.Helpers;
+using PaintSim.Helpers;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Seb.GPUSorting
+namespace PaintSim.GPUSorting
 {
     public class Scan
     {

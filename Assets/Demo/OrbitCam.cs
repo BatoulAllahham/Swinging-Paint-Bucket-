@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace Seb.Fluid.Demo
+namespace PaintSim.Fluid.Demo
 {
 	public class OrbitCam : MonoBehaviour
 	{

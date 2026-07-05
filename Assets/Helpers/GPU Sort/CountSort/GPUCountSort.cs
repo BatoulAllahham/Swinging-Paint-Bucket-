@@ -1,9 +1,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using Seb.Helpers;
+using PaintSim.Helpers;
 
-namespace Seb.GPUSorting
+namespace PaintSim.GPUSorting
 {
 	public class GPUCountSort
 	{

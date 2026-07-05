@@ -1,7 +1,7 @@
-using Seb.Helpers;
+using PaintSim.Helpers;
 using UnityEngine;
 
-namespace Seb.Helpers.Internal
+namespace PaintSim.Helpers.Internal
 {
 	public class SpatialOffsetCalculator
 	{

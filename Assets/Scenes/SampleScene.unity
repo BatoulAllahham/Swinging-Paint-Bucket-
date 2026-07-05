@@ -119,17 +119,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!114 &146183774 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
-  m_PrefabInstance: {fileID: 1580218008}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c8b3b79f98be3f34e8fefade4cef2ade, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &202937197
 GameObject:
   m_ObjectHideFlags: 0
@@ -551,13 +540,14 @@ MonoBehaviour:
   type: 0
   ropeLength: 10
   totalRopeMass: 0.5
+  isSimulationRunning: 0
   hangPoint: {fileID: 1422597289}
   bucket: {fileID: 1032810835}
   bucketTopOffset: {x: 0, y: -1, z: 0}
   numSegments: 30
   ropeRadius: 0.05
   radialSegments: 8
-  gravity: 9.81
+  gravity: 10
   constraintIterations: 5
   substeps: 4
 --- !u!1001 &596106147
@@ -583,6 +573,10 @@ PrefabInstance:
     - target: {fileID: 1905779097456414343, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_IsActive
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2585279340253128925, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: gravity
@@ -614,7 +608,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 800
+      value: 2000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -625,7 +619,15 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holePosition.x
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holePosition.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: sensorCenter.y
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
@@ -636,6 +638,10 @@ PrefabInstance:
       propertyPath: canvasCollision
       value: 
       objectReference: {fileID: 202937199}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holeOrientation
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
       value: 0.2
@@ -658,19 +664,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 200
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 2
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
       value: Fluid
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: num_particles
+      value: 18524
+      objectReference: {fileID: 0}
+    - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
-      value: 0.168
+      value: 0.904
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: bucketTransform
@@ -694,7 +704,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: debug_num_particles
-      value: 3789
+      value: 25191
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: particleSpawnDensity
@@ -725,8 +735,16 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: sim
+      value: 
+      objectReference: {fileID: 2069723428}
+    - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: mode
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: scale
-      value: 2
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: colourMap.atime0
@@ -868,13 +886,17 @@ PrefabInstance:
       propertyPath: m_ConstrainProportionsScale
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
     m_RemovedGameObjects:
     - {fileID: 1083262183165849594, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
     - {fileID: 1905779097456414343, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
     - {fileID: 7100726454166254729, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 9213789648226665038, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2069723428}
   m_SourcePrefab: {fileID: 100100000, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
 --- !u!4 &794224677 stripped
 Transform:
@@ -1021,6 +1043,17 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 844927711}
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &852984696 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+  m_PrefabInstance: {fileID: 2005025140}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f99a384512b94654fbeb7c06c43f81ba, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &896066163
 GameObject:
   m_ObjectHideFlags: 0
@@ -1052,7 +1085,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bdfdacde18fc7465b9891f7f40e626b8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FluidVFXBridge
-  fluidSimulation: {fileID: 146183774}
+  fluidSimulation: {fileID: 2069723428}
 --- !u!73398921 &896066165
 VFXRenderer:
   serializedVersion: 1
@@ -1212,6 +1245,74 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 7702486635604158722, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
   m_PrefabInstance: {fileID: 2005025140}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &1003974002
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1003974004}
+  - component: {fileID: 1003974003}
+  - component: {fileID: 1003974005}
+  m_Layer: 5
+  m_Name: UIDocument
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1003974003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1003974002}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
+  m_PanelSettings: {fileID: 11400000, guid: fdd6df6751fda4a10ba78e6de07ec98a, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: 1a87f39b8a1a543b093a55d86e8a7b73, type: 3}
+  m_SortingOrder: 0
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
+--- !u!4 &1003974004
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1003974002}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1003974005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1003974002}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cf67a11dcce8f4230aa91cb50b29aa20, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FluidMasterUI
 --- !u!1 &1032810834
 GameObject:
   m_ObjectHideFlags: 0
@@ -1403,6 +1504,7 @@ MonoBehaviour:
   airDensity: 1.25
   dragCoefficient: 0.01
   mass: 1
+  isSimulating: 0
   weightManager: {fileID: 942389057}
   hangPoint: {fileID: 1422597289}
   rope: {fileID: 552335637}
@@ -1557,6 +1659,10 @@ PrefabInstance:
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
       value: Fluid
+      objectReference: {fileID: 0}
+    - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: num_particles
+      value: 33535
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
@@ -2248,6 +2354,10 @@ PrefabInstance:
       value: Fluid
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: num_particles
+      value: 28710
+      objectReference: {fileID: 0}
+    - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
       value: 0.251
       objectReference: {fileID: 0}
@@ -2574,17 +2684,21 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2585279340253128925, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: gravity
       value: -10
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holeSize
-      value: 0.011
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: paintType
-      value: 2
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: surfaceType
@@ -2604,7 +2718,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: targetDensity
-      value: 800
+      value: 2000
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
@@ -2613,6 +2727,10 @@ PrefabInstance:
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: floorTransform
       value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holePosition.x
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holePosition.y
@@ -2627,6 +2745,14 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 202937199}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: holeOrientation
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: normalTimeScale
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: smoothingRadius
       value: 0.2
       objectReference: {fileID: 0}
@@ -2636,7 +2762,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: viscosityStrength
-      value: 0.0004
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: weightPerParticle
@@ -2648,19 +2774,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: pressureMultiplier
-      value: 200
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: nearPressureMultiplier
-      value: 2
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 4459974487696109756, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_Name
       value: Fluid
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: num_particles
+      value: 18524
+      objectReference: {fileID: 0}
+    - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
-      value: 0.44
+      value: 0.894
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: bucketTransform
@@ -2676,7 +2806,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: debug_num_particles
-      value: 9262
+      value: 60645
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: particleSpawnDensity
@@ -2705,6 +2835,10 @@ PrefabInstance:
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: spawnRegions.Array.data[0].centre.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: mode
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: scale
@@ -2878,6 +3012,57 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+--- !u!1 &2069723423 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 9213789648226665038, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+  m_PrefabInstance: {fileID: 596106147}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2069723428
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2069723423}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c8b3b79f98be3f34e8fefade4cef2ade, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  paintTextureResolution: 512
+  canvasMaterial: {fileID: 2100000, guid: 1553aef6b5174064f80c26ddffd5aa1c, type: 2}
+  paintColour: {r: 0.96862745, g: 0.14117648, b: 0.105882354, a: 1}
+  paintType: 2
+  normalTimeScale: 1
+  maxTimestepFPS: 60
+  iterationsPerFrame: 4
+  gravity: -10
+  smoothingRadius: 0.2
+  targetDensity: 2000
+  pressureMultiplier: 90
+  nearPressureMultiplier: 90
+  springStiffness: 1000
+  plasticityRate: 0.3
+  yieldRatio: 0.1
+  viscosityStrength: 0.0004
+  weightPerParticle: 0.0001
+  collisionDamping: 0.95
+  holePosition: {x: 0, y: 1, z: 0}
+  holeOrientation: 0
+  holeSize: 0
+  surfaceType: 0
+  temperature: 25
+  humidity: 0.5
+  evaporationRate: 0.01
+  currentParticleCount: 0
+  currentBucketWeight: 0
+  sensorCenter: {x: 0, y: 0, z: 0}
+  sensorExtents: {x: 0.5, y: 0.1, z: 0.5}
+  currentFlowSpeed: 0
+  bucketTransform: {fileID: 1496727215}
+  compute: {fileID: 7200000, guid: 9443696acfd0ebe4fb503b56d952256c, type: 3}
+  spawner: {fileID: 852984696}
+  canvasCollision: {fileID: 202937199}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2888,3 +3073,4 @@ SceneRoots:
   - {fileID: 1422597289}
   - {fileID: 202937198}
   - {fileID: 896066167}
+  - {fileID: 1003974004}

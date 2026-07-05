@@ -67,5 +67,5 @@
         "*.sln": "*.csproj",
         "*.slnx": "*.csproj"
     },
-    "dotnet.defaultSolution": "Swinging-Paint-Bucket--2.slnx"
+    "dotnet.defaultSolution": "Swinging-Paint-Bucket--3.slnx"
 }

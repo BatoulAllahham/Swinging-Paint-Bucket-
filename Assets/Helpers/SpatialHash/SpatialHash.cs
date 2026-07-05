@@ -1,8 +1,8 @@
-using Seb.GPUSorting;
+using PaintSim.GPUSorting;
 using UnityEngine;
-using Seb.Helpers.Internal;
+using PaintSim.Helpers.Internal;
 
-namespace Seb.Helpers
+namespace PaintSim.Helpers
 {
 	public class SpatialHash
 	{
