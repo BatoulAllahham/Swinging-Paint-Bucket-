@@ -193,7 +193,39 @@ namespace Seb.Fluid.Simulation
 					// holeSize = 0.011f;
 					break;
 			}
-		}
+            switch (surfaceType)
+            {
+                case SurfaceType.Glass:
+                    bounceOffset = 1.0f;
+                    roughnessOffset = 0.02f;
+                    absorptionOffset = 0.0f;
+                    break;
+
+                case SurfaceType.Wood:
+                    bounceOffset = 0.55f;
+                    roughnessOffset = 0.45f;
+                    absorptionOffset = 0.1f;
+                    break;
+
+                case SurfaceType.Sponge:
+                    bounceOffset = 0.15f;
+                    roughnessOffset = 0.9f;
+                    absorptionOffset = 1.0f;
+                    break;
+
+                case SurfaceType.Plastic:
+                    bounceOffset = 0.95f;
+                    roughnessOffset = 0.15f;
+                    absorptionOffset = 0.0f;
+                    break;
+
+                case SurfaceType.Canvas:
+                    bounceOffset = 0.35f;
+                    roughnessOffset = 0.65f;
+                    absorptionOffset = 0.45f;
+                    break;
+            }
+        }
 
 		void Start()
 		{
@@ -616,49 +648,22 @@ namespace Seb.Fluid.Simulation
 
 		public SurfaceType surfaceType;
 
-		Vector3 GetSurfaceParams()
-		{
-			switch (surfaceType)
-			{
-				case SurfaceType.Glass:
-					return new Vector3(
-						1.4f,   // bounce عالي
-						0.02f,  // rough قليل
-						0.0f    // لا امتصاص
-					);
+        [Header("Surface Tuning (Overrides Preset)")]
+        [Range(0f, 1f)] public float bounceOffset = 0.5f;
+        [Range(0f, 1f)] public float roughnessOffset = 0.5f;
+        [Range(0f, 1f)] public float absorptionOffset = 0.5f;
 
-				case SurfaceType.Wood:
-					return new Vector3(
-						0.55f,
-						0.45f,
-						0.1f
-					);
+        Vector3 GetSurfaceParams()
+        {
+            return new Vector3(
+                bounceOffset,
+                roughnessOffset,
+                absorptionOffset
+            );
+        }
 
-				case SurfaceType.Sponge:
-					return new Vector3(
-						0.15f,
-						0.9f,
-						1.0f
-					);
-
-				case SurfaceType.Plastic:
-					return new Vector3(
-						0.95f,
-						0.15f,
-						0.0f
-					);
-
-				case SurfaceType.Canvas:
-					return new Vector3(0.35f, 0.65f, 0.45f);
-
-
-			}
-
-			return Vector3.zero;
-		}
-
-		// PAINT TYPE
-		public enum PaintType { Watercolor, Acrylic, WallPaint }
+        // PAINT TYPE
+        public enum PaintType { Watercolor, Acrylic, WallPaint }
 
 		[Header("Paint Type")]
 		public PaintType paintType = PaintType.Watercolor;

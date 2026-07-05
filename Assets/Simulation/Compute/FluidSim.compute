@@ -994,7 +994,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         else
             vT = float3(0, 0, 0);
 
-        float friction = rough + absorb * 3.0;
+        //float friction = rough + absorb * 3.0;
+        float friction = rough * 0.35 + absorb * 3.0;//خشونة
         vT *= max(0.0, 1.0 - friction * deltaTime);
         vT *= (1.0 - rough * absorb) * (1.0 - woodMask * 0.9);
         vel = vN + vT;
@@ -1074,7 +1075,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         
 
-        float baseSize = lerp(2.0, 10.0, absorb + rough * 0.5);
+        float baseSize = lerp(2.0, 10.0, absorb);//خشونة
 
         float paintSize =
     lerp(0.7, 1.5, paintMixRate) *
@@ -1090,8 +1091,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         float minRadius =
     lerp(2.5, 4.0, absorb) * 
-    lerp(1.0, 1.4, rough) *
-    lerp(1.2, 0.85, paintFlowRate); 
+    lerp(1.2, 0.85, paintFlowRate); //خشونة
 
         int radius = max((int) round(minRadius), (int) round(finalSize));
         // ENVIRONMENT
@@ -1200,7 +1200,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 // دائرة إذا أفقي، بيضاوي إذا مائل
                 float distF = length(float2(x, y)) / radius;
                 float alpha = saturate(1.0 - distF);
-                alpha *= (1.0 - rough * distF);
+                //alpha *= (1.0 - rough * distF);
+                alpha *= lerp(1.0, 0.85, rough * distF);//خشونة
                 alpha *= (1.0 - effectiveAbsorb * 0.5);
 
                 // ENVIRONMENT
