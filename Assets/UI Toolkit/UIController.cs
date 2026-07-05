@@ -197,7 +197,7 @@ public class FluidMasterUI : MonoBehaviour
             if (activeBucket == null) return;
             if (evt.newValue == "Bottom") {
                 activeBucket.holeOrientation = 0;
-                activeBucket.holePosition.y = 1f;
+                activeBucket.holePosition.y = -1f;
                 topBottomControls.style.display = DisplayStyle.Flex;
                 sideControls.style.display = DisplayStyle.None;
             } else if (evt.newValue == "Side") {

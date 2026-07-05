@@ -5,7 +5,7 @@
         <ui:VisualElement class="left-panel">
             
             <ui:VisualElement class="header-section">
-                <ui:Label text="PAINT SIMULATION PRO" class="main-title" />
+                <ui:Label text="PAINT SIMULATION" class="main-title" />
             </ui:VisualElement>
 
             <ui:ScrollView class="settings-scroll" shows-vertical-scroller="true">
@@ -117,7 +117,7 @@
             </ui:ScrollView>
 
             <ui:VisualElement class="footer-section" style="flex-direction: row; justify-content: space-between;">
-                <ui:Button name="play-pause-btn" text="START SIMULATION" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
+                <ui:Button name="play-pause-btn" text="START Pendulum" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
                 <ui:Button name="reset-btn" text="RESET ALL" class="action-btn" style="flex-grow: 1;" />
             </ui:VisualElement>
 

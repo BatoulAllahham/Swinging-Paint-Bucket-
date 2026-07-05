@@ -595,9 +595,7 @@ void OnValidate()
             );
         }
 
-        // PAINT TYPE
-        public enum PaintType { Watercolor, Acrylic, WallPaint }
-
+ 
 
 		void SetPaintTypeParams()
 		{

@@ -157,9 +157,6 @@ public class Pendulum : MonoBehaviour
     private Quaternion initialRotation;
 
 
-
-    private Quaternion initialRotation;
-
     float getXCoordinate()
     {
         float xCoordinate = ropeLength * Mathf.Sin(thetaRadian) * Mathf.Cos(phiRadian);
