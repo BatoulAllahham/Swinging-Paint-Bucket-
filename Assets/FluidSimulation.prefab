@@ -280,9 +280,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bdfe3008efbf29745879ab1d40574478, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  mode: 2
+  m_Name:
+  m_EditorClassIdentifier:
+  mode: 1
   scale: 4
   colourMap:
     serializedVersion: 2
