@@ -18,9 +18,15 @@ namespace PaintSim.Fluid.Simulation
 		public Material canvasMaterial;
 		public Color paintColour = Color.blue; // colour this bucket's particles paint onto the canvas
 		RenderTexture paintTexture;
+        // Paint Coverage
+        private ComputeBuffer paintCoverageBuffer;
+        private uint[] paintCoverageData = new uint[1];
 
-		// MIXING
-		RenderTexture paintAccumTexture;
+        [Header("Paint Coverage")]
+        public float paintCoveragePercent;
+
+        // MIXING
+        RenderTexture paintAccumTexture;
 		static RenderTexture sharedPaintAccumTexture; // shared across all buckets
 
 		// STYLE: per-pixel wetness (R) and bump strength (G) baked at deposit time
@@ -132,12 +138,13 @@ namespace PaintSim.Fluid.Simulation
 		const int updateSpringsKernel = 10;
 		const int applySpringForcesKernel = 11;
 		const int mapOriginalToNewKernel = 12;
-
-		SpatialHash spatialHash;
+        int paintCoverageKernel;
+        SpatialHash spatialHash;
 
 		// State
 		bool isPaused;
 		bool pauseNextFrame;
+		public bool IsPaused => isPaused;
 		float smoothRadiusOld;
 		float simTimer;
 		bool inSlowMode;
@@ -265,8 +272,9 @@ namespace PaintSim.Fluid.Simulation
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
 			bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
-			// Spring Allocations (8 slots per particle)
-			springBuffer = new ComputeBuffer(numParticles * 8, 8);
+            paintCoverageBuffer = new ComputeBuffer(1, sizeof(uint));
+            // Spring Allocations (8 slots per particle)
+            springBuffer = new ComputeBuffer(numParticles * 8, 8);
 			sortTarget_springBuffer = new ComputeBuffer(numParticles * 8, 8);
 			originalToNewIndexBuffer = CreateStructuredBuffer<uint>(numParticles);
 
@@ -426,6 +434,7 @@ namespace PaintSim.Fluid.Simulation
 			{
 				paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
 				paintTexture.enableRandomWrite = true;
+				paintTexture.filterMode = FilterMode.Bilinear;
 				paintTexture.Create();
 
 				// Clear to white canvas (alpha=0 means no paint thickness yet)
@@ -440,10 +449,14 @@ namespace PaintSim.Fluid.Simulation
 
 			compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
 			compute.SetInt("paintTextureSize", paintTextureResolution);
+            paintCoverageKernel = compute.FindKernel("CalculatePaintCoverage");
 
-			// MIXING
-			// Share accum texture across all buckets (same logic as paintTexture)
-			if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
+            compute.SetTexture(paintCoverageKernel, "PaintTexture", paintTexture);
+            compute.SetBuffer(paintCoverageKernel, "PaintCoverageBuffer", paintCoverageBuffer);
+            compute.SetInt("paintTextureSize", paintTextureResolution);
+            // MIXING
+            // Share accum texture across all buckets (same logic as paintTexture)
+            if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
 			{
 				paintAccumTexture = sharedPaintAccumTexture;
 			}
@@ -452,6 +465,16 @@ namespace PaintSim.Fluid.Simulation
 				paintAccumTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGBFloat);
 				paintAccumTexture.enableRandomWrite = true;
 				paintAccumTexture.Create();
+
+				// RenderTexture.Create() does not guarantee zeroed memory. Leaving this
+				// uncleared meant oldPigment/storedMass could start as garbage, which the
+				// compute shader's mixing math reads at the very first touch of any pixel --
+				// i.e. right at a fresh splat's low-mass rim, producing a dark/wrong-colored ring.
+				var prevAccumRT = RenderTexture.active;
+				RenderTexture.active = paintAccumTexture;
+				GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+				RenderTexture.active = prevAccumRT;
+
 				sharedPaintAccumTexture = paintAccumTexture;
 			}
 
@@ -466,7 +489,17 @@ namespace PaintSim.Fluid.Simulation
 			{
 				paintStyleTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.RGFloat);
 				paintStyleTexture.enableRandomWrite = true;
+				paintStyleTexture.filterMode = FilterMode.Bilinear;
 				paintStyleTexture.Create();
+
+				// Same uninitialized-memory issue as PaintAccumTexture above: a garbage R value
+				// (wetness) greater than 0.2 would make the mixing math falsely think this pixel
+				// already has wet paint sitting on it before anything was ever deposited.
+				var prevStyleRT = RenderTexture.active;
+				RenderTexture.active = paintStyleTexture;
+				GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+				RenderTexture.active = prevStyleRT;
+
 				sharedPaintStyleTexture = paintStyleTexture;
 			}
 			compute.SetTexture(updatePositionsKernel, "PaintStyleTexture", paintStyleTexture);
@@ -494,6 +527,13 @@ namespace PaintSim.Fluid.Simulation
 
 			Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
 		}
+		// Lets external UI (e.g. MixingSceneUI's pause button) toggle the sim without touching
+		// the pauseNextFrame path, which exists to defer pausing to a clean frame boundary.
+		public void SetPaused(bool paused)
+		{
+			isPaused = paused;
+		}
+
 		// BANA
 		// Resets all particles to fluid state at their original spawn positions.
 		// Called by MixingSceneUI when clearing the canvas so in-air particles are also removed.
@@ -512,8 +552,9 @@ namespace PaintSim.Fluid.Simulation
 		{
 			float subStepDeltaTime = frameDeltaTime / iterationsPerFrame;
 			UpdateSettings(subStepDeltaTime, frameDeltaTime);
-
-			flowData[0] = 0; flowData[1] = 0; flowData[2] = 0; flowData[3] = 0;
+            paintCoverageData[0] = 0;
+            paintCoverageBuffer.SetData(paintCoverageData);
+            flowData[0] = 0; flowData[1] = 0; flowData[2] = 0; flowData[3] = 0;
 			flowResultBuffer.SetData(flowData);
 			// Simulation sub-steps
 			for (int i = 0; i < iterationsPerFrame; i++)
@@ -538,9 +579,17 @@ namespace PaintSim.Fluid.Simulation
 			{
 				currentFlowSpeed = 0f;
 			}
+            compute.Dispatch(
+    paintCoverageKernel,
+    Mathf.CeilToInt(paintTextureResolution / 16f),
+    Mathf.CeilToInt(paintTextureResolution / 16f),
+    1);
+            paintCoverageBuffer.GetData(paintCoverageData);
 
-
-		}
+            paintCoveragePercent =
+                (float)paintCoverageData[0] /
+                (paintTextureResolution * paintTextureResolution) * 100f;
+        }
 
 
 
@@ -756,8 +805,10 @@ namespace PaintSim.Fluid.Simulation
 			if (bucketCountBuffer != null) bucketCountBuffer.Release();
 
 			if (flowResultBuffer != null) flowResultBuffer.Release();
+            if (paintCoverageBuffer != null)
+                paintCoverageBuffer.Release();
 
-			if (spatialHash != null) spatialHash.Release();
+            if (spatialHash != null) spatialHash.Release();
 		}
 
 		void OnDrawGizmos()

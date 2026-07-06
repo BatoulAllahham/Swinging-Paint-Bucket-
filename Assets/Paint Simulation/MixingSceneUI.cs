@@ -31,6 +31,14 @@ public class MixingSceneUI : MonoBehaviour
     Vector2 _scroll;
     bool _showUI = true;
     bool _hasStarted;
+    bool _isPaused;
+
+    // Tracks whether the user has actually clicked a preset button yet. Without this, the
+    // "active" (blue) highlight would show whatever paintType/surfaceType the Inspector
+    // happens to default to (an enum can't be "unset"), making it look like a choice was
+    // already made when nothing was actually clicked.
+    readonly System.Collections.Generic.Dictionary<FluidSim, bool> _paintTypeChosen = new System.Collections.Generic.Dictionary<FluidSim, bool>();
+    bool _surfaceTypeChosen;
 
     static readonly FluidSim.PaintType[] PaintTypes =
         { FluidSim.PaintType.Watercolor, FluidSim.PaintType.Acrylic, FluidSim.PaintType.WallPaint };
@@ -129,6 +137,17 @@ public class MixingSceneUI : MonoBehaviour
 
         if (GUI.Button(new Rect(x, y, w, 30), "Start Simulation", _btn))
         {
+            // While the Setup screen is up, the sim keeps running with holeSize == 0, so
+            // particles settle into a resting equilibrium at the bucket floor (near-zero
+            // velocity, held up by pressure forces). The hole-escape check in the compute
+            // shader requires the particle to be strictly below the floor, which a settled,
+            // barely-moving particle never satisfies -- so it just sits there even once the
+            // hole opens. Resetting to the original spawn positions here (same as the Reset
+            // button does) guarantees particles are actively falling when the hole opens,
+            // which is what let it work only after a Reset+Start before.
+            bucketA?.ResetParticles();
+            bucketB?.ResetParticles();
+
             _hasStarted = true;
             _holeSize = pourHoleSize;
             if (bucketA != null) bucketA.holeSize = _holeSize;
@@ -159,9 +178,10 @@ public class MixingSceneUI : MonoBehaviour
         // Paint type presets
         GUI.Label(new Rect(x, y, w, 16), "Paint Type", _lbl); y += 18f;
         float bw = (w - 4f) / 3f;
+        bool paintChosen = _paintTypeChosen.TryGetValue(sim, out bool pc) && pc;
         for (int i = 0; i < PaintTypes.Length; i++)
         {
-            var style = sim.paintType == PaintTypes[i] ? _btnActive : _btn;
+            var style = (paintChosen && sim.paintType == PaintTypes[i]) ? _btnActive : _btn;
             if (GUI.Button(new Rect(x + i * (bw + 2f), y, bw, 22), PaintNames[i], style))
             {
                 sim.paintType = PaintTypes[i];
@@ -170,6 +190,7 @@ public class MixingSceneUI : MonoBehaviour
                 sim.targetDensity = DensPresets[i];
                 sim.pressureMultiplier = PressPresets[i];
                 sim.nearPressureMultiplier = NearPresets[i];
+                _paintTypeChosen[sim] = true;
             }
         }
         y += 26f;
@@ -183,9 +204,9 @@ public class MixingSceneUI : MonoBehaviour
 
         // Tilt on all three axes
         GUI.Label(new Rect(x, y, w, 16), "Rotation", _lbl); y += 18f;
-        _tiltX = LabelSlider(x, y, w, $"X  {_tiltX:F0}°", _tiltX, -90f, 0f); y += 20f;
+        _tiltX = LabelSlider(x, y, w, $"X  {_tiltX:F0}°", _tiltX, -28f, 28f); y += 20f;
         _tiltY = LabelSlider(x, y, w, $"Y  {_tiltY:F0}°", _tiltY, -180f, 180f); y += 20f;
-        _tiltZ = LabelSlider(x, y, w, $"Z  {_tiltZ:F0}°", _tiltZ, -90f, 90f); y += 20f;
+        _tiltZ = LabelSlider(x, y, w, $"Z  {_tiltZ:F0}°", _tiltZ, -45f, 0f); y += 20f;
         if (canvasTransform != null)
             canvasTransform.localEulerAngles = new Vector3(_tiltX, _tiltY, _tiltZ);
 
@@ -196,7 +217,7 @@ public class MixingSceneUI : MonoBehaviour
         {
             float bx = x + (i % 3) * (bw + 4f);
             float by = y + (i / 3) * 26f;
-            bool active = bucketA != null && bucketA.surfaceType == SurfaceTypes[i];
+            bool active = _surfaceTypeChosen && bucketA != null && bucketA.surfaceType == SurfaceTypes[i];
             if (GUI.Button(new Rect(bx, by, bw, 22), SurfaceNames[i], active ? _btnActive : _btn))
             {
                 // ApplySurfacePreset() is called explicitly because setting surfaceType from script
@@ -205,6 +226,7 @@ public class MixingSceneUI : MonoBehaviour
                 // shader would never update.
                 if (bucketA != null) { bucketA.surfaceType = SurfaceTypes[i]; bucketA.ApplySurfacePreset(); }
                 if (bucketB != null) { bucketB.surfaceType = SurfaceTypes[i]; bucketB.ApplySurfacePreset(); }
+                _surfaceTypeChosen = true;
             }
         }
         y += Mathf.CeilToInt(SurfaceTypes.Length / 3f) * 26f + 4f;
@@ -227,8 +249,19 @@ public class MixingSceneUI : MonoBehaviour
         if (bucketB != null) bucketB.holeSize = _holeSize;
         y += 8f;
 
+        if (GUI.Button(new Rect(x, y, w, 30), _isPaused ? "Continue" : "Pause", _btn))
+        {
+            _isPaused = !_isPaused;
+            bucketA?.SetPaused(_isPaused);
+            bucketB?.SetPaused(_isPaused);
+        }
+        y += 34f;
+
         if (GUI.Button(new Rect(x, y, w, 30), "Reset", _btn))
         {
+            _isPaused = false;
+            bucketA?.SetPaused(false);
+            bucketB?.SetPaused(false);
             ClearAll();
             _hasStarted = false;
         }
