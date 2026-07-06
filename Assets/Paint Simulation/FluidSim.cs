@@ -650,10 +650,24 @@ namespace PaintSim.Fluid.Simulation
 
 		void SetPaintTypeParams()
 		{
-			// Single source of truth: everything derives from viscosityStrength.
+			// TEMPERATURE: heat lowers viscosity (paint flows easier warm), cold raises it
+			// (paint stiffens). Neutral at 20C so existing paint-type calibration (Watercolor/
+			// Acrylic/WallPaint numbers tuned at room temp) is unaffected unless the slider
+			// is actually moved. Clamped so extreme slider values (-10..60) can't send
+			// viscosity to zero or to absurd multiples.
+			float tempViscosityFactor = Mathf.Exp(-0.03f * (temperature - 20f));
+			tempViscosityFactor = Mathf.Clamp(tempViscosityFactor, 0.3f, 3f);
+			float effectiveViscosity = viscosityStrength * tempViscosityFactor;
+
+			// Drives the SPH viscosity kernel (in-flight fluid, before it hits canvas) --
+			// overrides the plain "viscosityStrength" set earlier in UpdateSettings so
+			// in-bucket sloshing responds to temperature too, not just deposited paint.
+			compute.SetFloat("viscosityStrength", effectiveViscosity);
+
+			// Single source of truth: everything derives from viscosityStrength (now temperature-adjusted).
 			// viscNorm: 0=watercolor (visc=0), 0.333=acrylic (visc=0.0002), 0.5=wallpaint (visc=0.0004).
 			// Asymptotic — approaches 1.0 as viscosity → ∞, no hard ceiling.
-			float viscNorm = viscosityStrength / (viscosityStrength + 0.0004f);
+			float viscNorm = effectiveViscosity / (effectiveViscosity + 0.0004f);
 
 			// OLD: hardcoded switch — watercolor=0/0, acrylic=0.4/0.5, wallpaint=1/1
 			float paintViscosity = Mathf.Lerp(0.0f, 2.0f, viscNorm); // wallpaint→1.0, beyond→up to 2
