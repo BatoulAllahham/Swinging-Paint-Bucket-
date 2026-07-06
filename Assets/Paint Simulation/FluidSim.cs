@@ -138,6 +138,7 @@ namespace PaintSim.Fluid.Simulation
 		// State
 		bool isPaused;
 		bool pauseNextFrame;
+		public bool IsPaused => isPaused;
 		float smoothRadiusOld;
 		float simTimer;
 		bool inSlowMode;
@@ -426,6 +427,7 @@ namespace PaintSim.Fluid.Simulation
 			{
 				paintTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGB32);
 				paintTexture.enableRandomWrite = true;
+				paintTexture.filterMode = FilterMode.Bilinear;
 				paintTexture.Create();
 
 				// Clear to white canvas (alpha=0 means no paint thickness yet)
@@ -452,6 +454,16 @@ namespace PaintSim.Fluid.Simulation
 				paintAccumTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.ARGBFloat);
 				paintAccumTexture.enableRandomWrite = true;
 				paintAccumTexture.Create();
+
+				// RenderTexture.Create() does not guarantee zeroed memory. Leaving this
+				// uncleared meant oldPigment/storedMass could start as garbage, which the
+				// compute shader's mixing math reads at the very first touch of any pixel --
+				// i.e. right at a fresh splat's low-mass rim, producing a dark/wrong-colored ring.
+				var prevAccumRT = RenderTexture.active;
+				RenderTexture.active = paintAccumTexture;
+				GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+				RenderTexture.active = prevAccumRT;
+
 				sharedPaintAccumTexture = paintAccumTexture;
 			}
 
@@ -466,7 +478,17 @@ namespace PaintSim.Fluid.Simulation
 			{
 				paintStyleTexture = new RenderTexture(paintTextureResolution, paintTextureResolution, 0, RenderTextureFormat.RGFloat);
 				paintStyleTexture.enableRandomWrite = true;
+				paintStyleTexture.filterMode = FilterMode.Bilinear;
 				paintStyleTexture.Create();
+
+				// Same uninitialized-memory issue as PaintAccumTexture above: a garbage R value
+				// (wetness) greater than 0.2 would make the mixing math falsely think this pixel
+				// already has wet paint sitting on it before anything was ever deposited.
+				var prevStyleRT = RenderTexture.active;
+				RenderTexture.active = paintStyleTexture;
+				GL.Clear(false, true, new Color(0f, 0f, 0f, 0f));
+				RenderTexture.active = prevStyleRT;
+
 				sharedPaintStyleTexture = paintStyleTexture;
 			}
 			compute.SetTexture(updatePositionsKernel, "PaintStyleTexture", paintStyleTexture);
@@ -494,6 +516,13 @@ namespace PaintSim.Fluid.Simulation
 
 			Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
 		}
+		// Lets external UI (e.g. MixingSceneUI's pause button) toggle the sim without touching
+		// the pauseNextFrame path, which exists to defer pausing to a clean frame boundary.
+		public void SetPaused(bool paused)
+		{
+			isPaused = paused;
+		}
+
 		// BANA
 		// Resets all particles to fluid state at their original spawn positions.
 		// Called by MixingSceneUI when clearing the canvas so in-air particles are also removed.

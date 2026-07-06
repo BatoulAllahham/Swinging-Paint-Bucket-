@@ -791,22 +791,50 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         {
             float uvX = 1.0 - (u / canvasHalfSize.x + 1.0) * 0.5;
             float uvY = 1.0 - (v / canvasHalfSize.y + 1.0) * 0.5;
-            int2 coord = int2((int)(uvX * paintTextureSize), (int)(uvY * paintTextureSize));
+            float2 pixelPos = float2(uvX, uvY) * paintTextureSize;
+
+            // Project prevPos the same way. Instead of stamping discrete circles
+            // along the path (which always leaves a scalloped/"sawtooth" edge no
+            // matter how many stamps you add), we paint a single continuous
+            // capsule by measuring each pixel's distance to the whole segment.
+            float prevU = dot(prevPos - canvasCentre, canvasRight);
+            float prevV = dot(prevPos - canvasCentre, canvasUp);
+            float prevUvX = 1.0 - (prevU / canvasHalfSize.x + 1.0) * 0.5;
+            float prevUvY = 1.0 - (prevV / canvasHalfSize.y + 1.0) * 0.5;
+            float2 prevPixelPos = float2(prevUvX, prevUvY) * paintTextureSize;
 
             int radius = max(2, (int) lerp(4, 2, paintFlowRate));
             float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
 
             float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
 
-            for (int sx = -radius; sx <= radius; sx++)
-                for (int sy = -radius; sy <= radius; sy++)
-                {
-                    int2 p = coord + int2(sx, sy);
-                    if (p.x < 0 || p.x >= paintTextureSize || p.y < 0 || p.y >= paintTextureSize)
-                        continue;
+            // Thickness level at which a pixel's trail growth starts tapering off. Lower for
+            // viscous paint so it plateaus at a moderate thickness instead of climbing all the
+            // way to the ceiling and reading as uniformly thick as the origin blob. Keyed off
+            // the pixel's *current* thickness (not total accumulated mass) so a truly bare
+            // pixel (thickness == 0) always still gets a full-strength first deposit.
+            float trailThicknessRef = lerp(0.5, 0.15, saturate(paintViscosity / 2.0));
 
-                    float distF = length(float2(sx, sy)) / max(radius, 1);
-                    float alpha = saturate(1.0 - distF) * trailAlpha;
+            float2 segDir = pixelPos - prevPixelPos;
+            float segLenSq = dot(segDir, segDir);
+
+            int2 minCoord = int2(floor(min(pixelPos, prevPixelPos))) - radius;
+            int2 maxCoord = int2(ceil(max(pixelPos, prevPixelPos))) + radius;
+            minCoord = max(minCoord, int2(0, 0));
+            maxCoord = min(maxCoord, int2(paintTextureSize - 1, paintTextureSize - 1));
+
+            for (int px = minCoord.x; px <= maxCoord.x; px++)
+                for (int py = minCoord.y; py <= maxCoord.y; py++)
+                {
+                    int2 p = int2(px, py);
+                    float2 pixelCenter = float2(px, py) + 0.5;
+
+                    float t = segLenSq > 1e-6 ? saturate(dot(pixelCenter - prevPixelPos, segDir) / segLenSq) : 0.0;
+                    float2 closest = prevPixelPos + segDir * t;
+                    float distF = length(pixelCenter - closest) / max(radius, 1);
+
+                    float falloff = saturate(1.0 - distF);
+                    float alpha = falloff * trailAlpha;
                     if (alpha < 0.001)
                         continue;
 
@@ -818,21 +846,34 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                     float effOldT = (incomingWaterT && storedWaterT) ? storedMassT : 0.0;
                     float3 avgPig = (effOldT * accum.rgb + alpha * newPigment) / max(effOldT + alpha, 0.001);
                     PaintAccumTexture[p] = float4(avgPig, storedMassT + alpha);
-                    PaintStyleTexture[p] = float2(paintWetnessGloss, PaintStyleTexture[p].g);
+
+                    // Bake bump strength the same way the initial splat does, so the
+                    // trail picks up a bit of surface texture (via the canvas shader's
+                    // height-gradient normal) instead of rendering perfectly flat.
+                    // paintBumpStrength is paint-type dependent (watercolor ~1.5, wallpaint ~5.5).
+                    float oldBumpT = PaintStyleTexture[p].g;
+                    float newStyleMassT = storedMassT + alpha;
+                    float newBumpT = (storedMassT * oldBumpT + alpha * paintBumpStrength) / max(newStyleMassT, 0.001);
+                    PaintStyleTexture[p] = float2(paintWetnessGloss, newBumpT);
 
                     float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
-                    float oldTrailThick = PaintTexture[p].a;
-                    float trailVisRate = (effectiveAbsorb < 0.05)
-                    ? max(paintLayerThickness * 0.8, 0.08)
-                        : max(paintLayerThickness * 0.5, 0.02);
                     float old = PaintTexture[p].a;
 
-                    float shape = alpha * paintLayerThickness;
-                    float flow = trailAlpha * 0.2;
-
-                    float thickness = old * 0.96 + flow;
-                    thickness = max(thickness, shape * 0.6);
-                    thickness = saturate(thickness);
+                    // Very slight thickness, scaled directly by this paint type's layer
+                    // thickness (watercolor barely raises the surface, wallpaint raises it more).
+                    // The flat 0.02 baseline guarantees a single pass over bare canvas (old == 0)
+                    // clears the canvas shader's visibility threshold (sqrt(height*500) needs
+                    // height >~0.002) -- without it, thin paint types deposited too little height
+                    // to ever become visible on unpainted pixels, so the trail only seemed to
+                    // "work" where a prior splat had already pushed thickness above that floor.
+                    // Soft cap keyed off this pixel's current thickness: full strength at
+                    // old == 0 (guarantees bare canvas still gets painted), tapering off as the
+                    // pixel already gets thicker so heavily-revisited spots plateau instead of
+                    // climbing all the way to the ceiling and reading as uniformly thick as the
+                    // origin blob.
+                    float trailSoftCap = exp(-old / trailThicknessRef);
+                    float trailThickness = alpha * (0.02 + paintLayerThickness * 0.15) * trailSoftCap;
+                    float thickness = saturate(old + trailThickness);
 
                     PaintTexture[p] = float4(color, thickness);
                     // GOODI EDITS END
@@ -976,7 +1017,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
         // Mark deposited
         ParticleStates[id.x] = 2;
-        
 
         // effectiveAbsorb: only used for paint deposit shape
         float effectiveAbsorb = absorb * (1.0 - paintAbsorptionResistance);
@@ -1195,8 +1235,15 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 bool doMix           = incomingIsWater && storedIsWater;
                 float effectiveOldMass = doMix ? storedMass : 0.0;
                 float newEffectiveMass = effectiveOldMass + depositedMass;
-                float3 avgPigment = (effectiveOldMass * oldPigment + depositedMass * newPigment)
-                          / max(newEffectiveMass, 0.001);
+                // Was "/ max(newEffectiveMass, 0.001)": right at a splat's rim, depositedMass
+                // tapers continuously toward 0, and once it drops below the 0.001 floor the
+                // division uses 0.001 instead of the real (tiny) mass -- scaling the color down
+                // toward black exactly where the edge is. The alpha/thickness channel is what
+                // should carry "how faint this deposit is"; the pigment itself should stay at
+                // full strength when there's no old paint to mix with, however small the deposit.
+                float3 avgPigment = (newEffectiveMass > 0.0001)
+                    ? (effectiveOldMass * oldPigment + depositedMass * newPigment) / newEffectiveMass
+                    : newPigment;
                 float newStoredMass = storedMass + depositedMass;
                 PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
                 float spongeMask = saturate((absorb - 0.6) / 0.3);

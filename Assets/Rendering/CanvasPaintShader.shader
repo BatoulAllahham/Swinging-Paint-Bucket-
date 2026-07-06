@@ -259,7 +259,11 @@ Shader "Custom/CanvasPaint"
                 float flatness = saturate(c.a * 8.0) * (1.0 - sobelMag);
                 float nX = _GradNoise(uv * 40.0);
                 float nY = _GradNoise(uv * 40.0 + float2(31.4, 17.9));
-                normalTS = normalize(normalTS + float3(nX, nY, 0.0) * 0.25 * flatness);
+                // Scale by pixelBump (the paint-type bump value baked per-deposit) instead of a
+                // flat constant, so thicker/rougher paint types keep visibly more grain once
+                // saturated instead of the surface reading as smooth/textureless at the ceiling.
+                float noiseStrength = saturate(pixelBump * 0.08);
+                normalTS = normalize(normalTS + float3(nX, nY, 0.0) * noiseStrength * flatness);
 
                 // Convert tangent-space → world-space
                 float3x3 TBN = float3x3(
