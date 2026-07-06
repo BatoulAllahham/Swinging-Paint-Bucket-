@@ -1,0 +1,1157 @@
+#pragma kernel ExternalForces
+#pragma kernel UpdateSpatialHash
+#pragma kernel Reorder
+#pragma kernel ReorderSprings
+#pragma kernel ReorderCopyBack
+#pragma kernel ReorderSpringsCopyBack
+#pragma kernel CalculateDensities
+#pragma kernel CalculatePressureForce
+#pragma kernel CalculateViscosity
+#pragma kernel UpdatePositions
+#pragma kernel UpdateSprings
+#pragma kernel ApplySpringForces
+#pragma kernel MapOriginalToNew
+
+// Includes
+#include "./FluidMaths3D.hlsl"
+#include "./SpatialHash3D.hlsl"
+#include "./CanvasCollision.hlsl"
+
+static const int ThreadGroupSize = 256;
+
+
+// Buffers
+RWStructuredBuffer<float3> Positions;
+RWStructuredBuffer<float3> PredictedPositions;
+RWStructuredBuffer<float3> Velocities;
+RWStructuredBuffer<float2> Densities; // Density, Near Density
+struct Spring 
+{
+    int neighborIndex;
+    float restLength;
+};
+// Spring Buffers
+RWStructuredBuffer<Spring> Springs;
+RWStructuredBuffer<Spring> SortTarget_Springs;
+RWStructuredBuffer<uint> OriginalToNewIndices;
+
+// Spatial hashing
+RWStructuredBuffer<uint> SpatialKeys;
+RWStructuredBuffer<uint> SpatialOffsets;
+StructuredBuffer<uint> SortedIndices;
+
+RWStructuredBuffer<float3> Debug;
+
+// Settings
+const uint numParticles;
+const float gravity;
+const float deltaTime;
+const float simTime;
+const float collisionDamping;
+const float smoothingRadius;
+const float targetDensity;
+const float pressureMultiplier;
+const float nearPressureMultiplier;
+const float viscosityStrength;
+const float edgeForce;
+const float edgeForceDst;
+const float3 boundsSize;
+const float springStiffness;
+const float plasticityRate;
+const float yieldRatio;
+
+RWStructuredBuffer<int> BucketParticleCount;
+const float4x4 localToWorld;
+const float4x4 worldToLocal;
+RWStructuredBuffer<int> ParticleStates;
+
+// Environmental Properties
+const float temperature;
+const float humidity;
+const float evaporationRate;
+
+RWStructuredBuffer<int> FlowResultBuffer; // [Count, SumX, SumY, SumZ]
+float3 sensorCenter;
+float3 sensorExtents;
+
+// CANVAS
+const float3 canvasCentre;
+const float3 canvasNormal;
+const float3 canvasRight;
+const float3 canvasUp;
+const float2 canvasHalfSize;
+//UV
+RWTexture2D<float4> PaintTexture;
+const int paintTextureSize;
+const float4 paintColour;
+// PAINT TYPE
+const float paintViscosity;
+const float paintDensityFactor;
+const float paintMixRate;
+
+// MIXING
+RWTexture2D<float4> PaintAccumTexture;
+
+// STYLE: per-pixel wetness (R) and bump (G) baked at deposit time
+RWTexture2D<float2> PaintStyleTexture;
+const float paintWetnessGloss;
+const float paintBumpStrength;
+
+// PAINT TYPE
+const float paintFlowRate;
+const float paintAbsorptionResistance;
+const float paintSpread;
+// THICKNESS
+const float paintLayerThickness; // how much each deposit raises the surface height (0=flat, varies by paint type)
+
+const float2 interactionInputPoint;
+const float interactionInputStrength;
+const float interactionInputRadius;
+
+//hole
+const float holeSize;
+const float3 holePosition;
+const int holeOrientation; 
+
+int surfaceType;
+float3 surfaceParams;
+
+float PressureFromDensity(float density)
+{
+    return (density - targetDensity) * pressureMultiplier;
+}
+
+float NearPressureFromDensity(float nearDensity)
+{
+    return nearDensity * nearPressureMultiplier;
+}
+
+
+float Remap01(float val, float minVal, float maxVal)
+{
+    return saturate((val - minVal) / (maxVal - minVal));
+}
+
+
+
+
+void ResolveCollisions(uint particleID,inout float3 pos, inout float3 vel, float collisionDamping)
+{
+    // Transform position/velocity to the local space of the bounding box
+    float3 posLocal = mul(worldToLocal, float4(pos, 1)).xyz;
+    float3 velocityLocal = mul(worldToLocal, float4(vel, 0)).xyz;
+
+    // Calculate distance from box on each axis (negative values are outside box)
+    const float3 halfSize = 0.5;
+    const float3 edgeDst = halfSize - abs(posLocal);
+
+    // Resolve collisions
+    if (edgeDst.x <= 0)
+    {
+        posLocal.x = halfSize.x * sign(posLocal.x);
+        velocityLocal.x *= -1 * collisionDamping;
+    }
+    if (edgeDst.y <= 0)
+    {
+        posLocal.y = halfSize.y * sign(posLocal.y);
+        velocityLocal.y *= -1 * collisionDamping;
+    }
+    if (edgeDst.z <= 0)
+    {
+        posLocal.z = halfSize.z * sign(posLocal.z);
+        velocityLocal.z *= -1 * collisionDamping;
+    }
+
+    pos = mul(localToWorld, float4(posLocal, 1)).xyz;
+    vel = mul(localToWorld, float4(velocityLocal, 0)).xyz;
+}
+[numthreads(ThreadGroupSize, 1, 1)]
+void ExternalForces(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    // Skip deposited particles
+    if (Positions[id.x].y < -500)
+        return;
+    Velocities[id.x] += float3(0, gravity, 0) * deltaTime;
+
+    PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * 1 / 120.0;
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void UpdateSpatialHash(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    uint index = id.x;
+    int3 cell = GetCell3D(PredictedPositions[index], smoothingRadius);
+    uint hash = HashCell3D(cell);
+    uint key = KeyFromHash(hash, numParticles);
+
+    SpatialKeys[id.x] = key;
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void MapOriginalToNew(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+    OriginalToNewIndices[SortedIndices[id.x]] = id.x;
+}
+
+RWStructuredBuffer<float3> SortTarget_Positions;
+RWStructuredBuffer<float3> SortTarget_PredictedPositions;
+RWStructuredBuffer<float3> SortTarget_Velocities;
+RWStructuredBuffer<int> SortTarget_ParticleStates;
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void Reorder(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+    uint sortedIndex = SortedIndices[id.x];
+    SortTarget_Positions[id.x] = Positions[sortedIndex];
+    SortTarget_PredictedPositions[id.x] = PredictedPositions[sortedIndex];
+    SortTarget_Velocities[id.x] = Velocities[sortedIndex];
+    SortTarget_ParticleStates[id.x] = ParticleStates[SortedIndices[id.x]];
+}
+// Separate kernel to avoid hitting the 8-UAV GPU Hardware Limit
+[numthreads(ThreadGroupSize, 1, 1)]
+void ReorderSprings(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+    uint sortedIndex = SortedIndices[id.x];
+
+    // Re-map the neighbor indices inside the springs
+    for (int s = 0; s < 8; s++) 
+    {
+        Spring spring = Springs[sortedIndex * 8 + s];
+        if (spring.neighborIndex != -1) 
+        {
+            spring.neighborIndex = OriginalToNewIndices[spring.neighborIndex];
+        }
+        SortTarget_Springs[id.x * 8 + s] = spring;
+    }
+}
+
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void ReorderCopyBack(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    Positions[id.x] = SortTarget_Positions[id.x];
+    PredictedPositions[id.x] = SortTarget_PredictedPositions[id.x];
+    Velocities[id.x] = SortTarget_Velocities[id.x];
+    ParticleStates[id.x] = SortTarget_ParticleStates[id.x];
+}
+// Separate copy back kernel
+[numthreads(ThreadGroupSize, 1, 1)]
+void ReorderSpringsCopyBack(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    // Copy springs back
+    for (int s = 0; s < 8; s++) 
+    {
+        Springs[id.x * 8 + s] = SortTarget_Springs[id.x * 8 + s];
+    }
+}
+
+float2 CalculateDensitiesAtPoint(float3 pos)
+{
+    int3 originCell = GetCell3D(pos, smoothingRadius);
+    float sqrRadius = smoothingRadius * smoothingRadius;
+    float density = 0;
+    float nearDensity = 0;
+
+    // Neighbour search
+    for (int i = 0; i < 27; i++)
+    {
+        uint hash = HashCell3D(originCell + offsets3D[i]);
+        uint key = KeyFromHash(hash, numParticles);
+        uint currIndex = SpatialOffsets[key];
+
+        while (currIndex < numParticles)
+        {
+            uint neighbourIndex = currIndex;
+            currIndex++;
+
+            uint neighbourKey = SpatialKeys[neighbourIndex];
+            // Exit if no longer looking at correct bin
+            if (neighbourKey != key)
+                break;
+
+            float3 neighbourPos = PredictedPositions[neighbourIndex];
+            float3 offsetToNeighbour = neighbourPos - pos;
+            float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+            // Skip if not within radius
+            if (sqrDstToNeighbour > sqrRadius)
+                continue;
+
+            // Calculate density and near density
+            float dst = sqrt(sqrDstToNeighbour);
+            density += DensityKernel(dst, smoothingRadius);
+            nearDensity += NearDensityKernel(dst, smoothingRadius);
+        }
+    }
+
+    return float2(density, nearDensity);
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void CalculateDensities(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    float3 pos = PredictedPositions[id.x];
+    float2 densities = CalculateDensitiesAtPoint(pos);
+
+    Densities[id.x] = densities;
+}
+
+
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void CalculatePressureForce(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    // Calculate pressure
+    float density = Densities[id.x][0];
+    float densityNear = Densities[id.x][1];
+    float pressure = PressureFromDensity(density);
+    float nearPressure = NearPressureFromDensity(densityNear);
+    float3 pressureForce = 0;
+    float3 velocity = Velocities[id.x];
+
+    float3 pos = PredictedPositions[id.x];
+    int3 originCell = GetCell3D(pos, smoothingRadius);
+    float sqrRadius = smoothingRadius * smoothingRadius;
+    int neighbourCount = 0;
+
+    // Foam variables
+    float weightedVelocityDifference = 0;
+
+
+    // Neighbour search
+    for (int i = 0; i < 27; i++)
+    {
+        uint hash = HashCell3D(originCell + offsets3D[i]);
+        uint key = KeyFromHash(hash, numParticles);
+        uint currIndex = SpatialOffsets[key];
+
+        while (currIndex < numParticles)
+        {
+            uint neighbourIndex = currIndex;
+            currIndex++;
+
+            // Skip if looking at self
+            if (neighbourIndex == id.x)
+                continue;
+
+            uint neighbourKey = SpatialKeys[neighbourIndex];
+            // Exit if no longer looking at correct bin
+            if (neighbourKey != key)
+                break;
+
+            float3 neighbourPos = PredictedPositions[neighbourIndex];
+            float3 offsetToNeighbour = neighbourPos - pos;
+            float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+            // Skip if not within radius
+            if (sqrDstToNeighbour > sqrRadius)
+                continue;
+
+            // Calculate pressure force
+            float densityNeighbour = Densities[neighbourIndex][0];
+            float nearDensityNeighbour = Densities[neighbourIndex][1];
+            float neighbourPressure = PressureFromDensity(densityNeighbour);
+            float neighbourPressureNear = NearPressureFromDensity(nearDensityNeighbour);
+
+            float sharedPressure = (pressure + neighbourPressure) / 2;
+            float sharedNearPressure = (nearPressure + neighbourPressureNear) / 2;
+
+            float dstToNeighbour = sqrt(sqrDstToNeighbour);
+            float3 dirToNeighbour = dstToNeighbour > 0 ? offsetToNeighbour / dstToNeighbour : float3(0, 1, 0);
+            neighbourCount++;
+
+            // Update pressure force
+            pressureForce += dirToNeighbour * DensityDerivative(dstToNeighbour, smoothingRadius) * sharedPressure / densityNeighbour;
+            pressureForce += dirToNeighbour * NearDensityDerivative(dstToNeighbour, smoothingRadius) * sharedNearPressure / nearDensityNeighbour;
+
+            // // ---- White Particle 'Trapped Air' Calculation ----
+            // float3 relativeVelocity = velocity - Velocities[neighbourIndex];
+            // float relativeVelocityMagnitude = length(relativeVelocity);
+            // float3 relativeVelocityDir = relativeVelocity / max(0.000001, relativeVelocityMagnitude);
+            // // 0 if moving in opposite directions; up to 2 if moving directly toward one another
+            // float convergeWeight = 1 - dot(relativeVelocityDir, -dirToNeighbour);
+            // // 1 when distance between particles is 0, down to 0 when distance reaches the smoothing radius
+            // float influence = 1 - min(1, dstToNeighbour / smoothingRadius);
+            // // Sum up weighted velocity diff between current particle and each of its surrounding neighbours
+            // weightedVelocityDifference += relativeVelocityMagnitude * convergeWeight * influence;
+        }
+    }
+
+    float3 acceleration = pressureForce / density;
+    float3 velocityNew = velocity + acceleration * deltaTime;
+    Velocities[id.x] = velocityNew;
+
+    // Quick test -- apply some drag to airborne fluid particles
+    // if (neighbourCount < 8)
+    // {
+    //     Velocities[id.x] -= Velocities[id.x] * deltaTime * 0.75;
+    // }
+
+
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void UpdateSprings(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+
+    float3 pos = PredictedPositions[id.x];
+    int3 originCell = GetCell3D(pos, smoothingRadius);
+    float h = smoothingRadius;
+
+    // PART A: Update existing springs (Plasticity & Breaking)
+    for (int s = 0; s < 8; s++)
+    {
+        int springIdx = id.x * 8 + s;
+        Spring spring = Springs[springIdx];
+
+        if (spring.neighborIndex != -1)
+        {
+            float3 neighborPos = PredictedPositions[spring.neighborIndex];
+            float r = length(neighborPos - pos);
+
+            // Break spring if it stretches too far
+            if (r > h || spring.restLength > h)
+            {
+                Springs[springIdx].neighborIndex = -1;
+                continue;
+            }
+
+            // Plasticity: permanently deform the rest length
+            float deformation = r - spring.restLength;
+            float elasticLimit = yieldRatio * spring.restLength;
+
+            if (abs(deformation) > elasticLimit)
+            {
+                float signDeform = sign(deformation);
+                float delta = plasticityRate * (deformation - signDeform * elasticLimit) * deltaTime;
+                Springs[springIdx].restLength += delta;
+            }
+        }
+    }
+
+    // PART B: Spawn new springs using neighbor search
+    for (int i = 0; i < 27; i++)
+    {
+        uint hash = HashCell3D(originCell + offsets3D[i]);
+        uint key = KeyFromHash(hash, numParticles);
+        uint currIndex = SpatialOffsets[key];
+
+        while (currIndex < numParticles)
+        {
+            uint neighborIndex = currIndex;
+            currIndex++;
+
+            if (neighborIndex == id.x) continue;
+            if (SpatialKeys[neighborIndex] != key) break;
+
+            float r = length(PredictedPositions[neighborIndex] - pos);
+
+            if (r < h)
+            {
+                bool exists = false;
+                int emptySlot = -1;
+
+                // Check if spring already exists, or find an empty slot
+                for (int j = 0; j < 8; j++)
+                {
+                    int slot = id.x * 8 + j;
+                    if (Springs[slot].neighborIndex == (int)neighborIndex) exists = true;
+                    if (Springs[slot].neighborIndex == -1 && emptySlot == -1) emptySlot = slot;
+                }
+
+                // Create the spring!
+                if (!exists && emptySlot != -1)
+                {
+                    Springs[emptySlot].neighborIndex = neighborIndex;
+                    Springs[emptySlot].restLength = h;
+                }
+            }
+        }
+    }
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void ApplySpringForces(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles) return;
+
+    float3 pos = PredictedPositions[id.x];
+    float3 velocity = Velocities[id.x];
+    float h = smoothingRadius;
+    float3 springForce = 0;
+
+    for (int s = 0; s < 8; s++)
+    {
+        Spring spring = Springs[id.x * 8 + s];
+
+        if (spring.neighborIndex != -1)
+        {
+            float3 neighborPos = PredictedPositions[spring.neighborIndex];
+            float3 offset = neighborPos - pos;
+            float r = length(offset);
+
+            if (r > 0)
+            {
+                float3 dir = offset / r;
+                float L = spring.restLength;
+
+                // Hooke's Law from the paper
+                float3 acceleration = springStiffness * (1.0 - (L / h)) * (L - r) * dir;
+                
+                // Add to total force (divided by 2 for Newton's 3rd law symmetry)
+                springForce -= acceleration * 0.5;
+            }
+        }
+    }
+
+    // Apply the spring acceleration directly to velocity
+    Velocities[id.x] = velocity + (springForce * deltaTime);
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void CalculateViscosity(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= numParticles)
+        return;
+
+    float3 pos = PredictedPositions[id.x];
+    int3 originCell = GetCell3D(pos, smoothingRadius);
+    float sqrRadius = smoothingRadius * smoothingRadius;
+
+    float3 viscosityForce = 0;
+    float3 velocity = Velocities[id.x];
+
+    // Neighbour search
+    for (int i = 0; i < 27; i++)
+    {
+        uint hash = HashCell3D(originCell + offsets3D[i]);
+        uint key = KeyFromHash(hash, numParticles);
+        uint currIndex = SpatialOffsets[key];
+
+        while (currIndex < numParticles)
+        {
+            uint neighbourIndex = currIndex;
+            currIndex++;
+
+            uint neighbourKey = SpatialKeys[neighbourIndex];
+            // Exit if no longer looking at correct bin
+            if (neighbourKey != key)
+                break;
+
+
+            // Skip if looking at self
+            if (neighbourIndex == id.x)
+                continue;
+
+            float3 neighbourPos = PredictedPositions[neighbourIndex];
+            float3 offsetToNeighbour = neighbourPos - pos;
+            float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+            // Skip if not within radius
+            if (sqrDstToNeighbour > sqrRadius)
+                continue;
+
+            // Calculate viscosity
+            float dst = sqrt(sqrDstToNeighbour);
+            float3 neighbourVelocity = Velocities[neighbourIndex];
+            viscosityForce += (neighbourVelocity - velocity) * SmoothingKernelPoly6(dst, smoothingRadius);
+        }
+    }
+    Velocities[id.x] += viscosityForce * viscosityStrength * deltaTime;
+}
+
+[numthreads(ThreadGroupSize, 1, 1)]
+void UpdatePositions(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x == 0) BucketParticleCount[0] = 0;
+    
+    // Ensure we don't go out of bounds
+    if (id.x >= numParticles) return;
+
+    // 2. Perform your logic to check if particle is active
+    // (Example: if (Positions[id.x].x > -1000))
+    if(ParticleStates[id.x]==0)
+    // 3. Increment the counter
+    InterlockedAdd(BucketParticleCount[0], 1);
+
+    if (id.x >= numParticles)
+        return;
+
+    float3 vel = Velocities[id.x];
+    float3 prevPos = Positions[id.x];
+    float3 pos = prevPos + vel * deltaTime;
+
+    ResolveCollisions(id.x, pos, vel, collisionDamping);
+
+    // CANVAS
+    const float particleRadius = smoothingRadius * 0.5;
+    const float canvasRestitution = 0.0;
+    const float canvasTangentDamping = 0.3;
+    
+    if (ParticleStates[id.x] == 2)
+    {
+        float3 n = canvasNormal;
+        if (dot(n, float3(0, 1, 0)) < 0)
+            n = -n;
+
+        float absorb = surfaceParams.z;
+        float rough = surfaceParams.y;
+        float flatness = abs(dot(n, float3(0, 1, 0)));
+
+        // Project back onto surface
+        float dist = dot(pos - canvasCentre, n);
+        pos = pos - n * (dist - particleRadius);
+
+        // glass(absorb=0) + anything       → 0.0  never absorbed
+        // sponge(absorb=1) + watercolor(resistance=0)  → 1.0  stops instantly
+        // sponge(absorb=1) + wallpaint(resistance=0.9) → 0.1  slides a little
+        float effectiveAbsorb = saturate(absorb * (1.0 - paintAbsorptionResistance));
+
+        // Viscous drag: high viscosity paint resists moving regardless of surface
+        float viscousDrag = 1.0 - paintFlowRate;
+
+        // Friction: surface roughness + absorption + viscosity (25bfa76)
+        float friction = rough * 0.8 + effectiveAbsorb * 1.2 + viscousDrag * 0.6;
+        vel *= max(0.0, 1.0 - friction * deltaTime);
+
+        bool canSlide = (flatness < 0.995);
+        if (canSlide)
+        {
+            // OUR VERSION (commented for A/B comparison): acceleration-based, with a viscosity/
+            // absorption-aware max-speed clamp, using the actual gravity magnitude.
+            // float3 gravDir = float3(0, -gravity, 0);
+            // float3 slideForce = gravDir - n * dot(gravDir, n);
+            // float slideStrength = length(slideForce);
+            // if (slideStrength > 0.0001)
+            //     slideForce /= slideStrength;
+            // float slideAccel = paintFlowRate * (1.0 - effectiveAbsorb * 0.8);
+            // vel += slideForce * slideStrength * slideAccel * deltaTime;
+            // float maxSpeed = paintFlowRate / (1.0 + viscousDrag * 4.0 + effectiveAbsorb * 3.0) * 0.4;
+            // float spd = length(vel);
+            // if (spd > maxSpeed)
+            //     vel = vel / spd * maxSpeed;
+
+            // GOODI EDITS START 
+            float3 gravityDir = float3(0, -1, 0);
+
+            float3 slideDir = gravityDir - n * dot(gravityDir, n);
+
+            float lenDir = length(slideDir);
+
+            if (lenDir > 0.00001)
+            {
+                slideDir /= lenDir;
+
+                vel = slideDir * paintFlowRate;
+            }
+            // GOODI EDITS END
+        }
+        else
+            vel = float3(0, 0, 0);
+
+        // remove when fully stopped (25bfa76)
+        if (length(vel) < 0.00005 && flatness > 0.98)
+        {
+            pos = float3(0, -1000, 0);
+            vel = float3(0, 0, 0);
+            Positions[id.x] = pos;
+            Velocities[id.x] = vel;
+            return;
+        }
+
+        // trail paint while sliding
+        float u = dot(pos - canvasCentre, canvasRight);
+        float v = dot(pos - canvasCentre, canvasUp);
+
+        if (abs(u) <= canvasHalfSize.x && abs(v) <= canvasHalfSize.y)
+        {
+            float uvX = 1.0 - (u / canvasHalfSize.x + 1.0) * 0.5;
+            float uvY = 1.0 - (v / canvasHalfSize.y + 1.0) * 0.5;
+            int2 coord = int2((int)(uvX * paintTextureSize), (int)(uvY * paintTextureSize));
+
+            int radius = max(2, (int) lerp(4, 2, paintFlowRate));
+            float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
+
+            float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
+
+            for (int sx = -radius; sx <= radius; sx++)
+                for (int sy = -radius; sy <= radius; sy++)
+                {
+                    int2 p = coord + int2(sx, sy);
+                    if (p.x < 0 || p.x >= paintTextureSize || p.y < 0 || p.y >= paintTextureSize)
+                        continue;
+
+                    float distF = length(float2(sx, sy)) / max(radius, 1);
+                    float alpha = saturate(1.0 - distF) * trailAlpha;
+                    if (alpha < 0.001)
+                        continue;
+
+                    // GOODI EDITS START
+                    float4 accum = PaintAccumTexture[p];
+                    float storedMassT   = accum.a;
+                    bool incomingWaterT = paintMixRate > 0.5;
+                    bool storedWaterT   = PaintStyleTexture[p].r > 0.2;
+                    float effOldT = (incomingWaterT && storedWaterT) ? storedMassT : 0.0;
+                    float3 avgPig = (effOldT * accum.rgb + alpha * newPigment) / max(effOldT + alpha, 0.001);
+                    PaintAccumTexture[p] = float4(avgPig, storedMassT + alpha);
+                    PaintStyleTexture[p] = float2(paintWetnessGloss, PaintStyleTexture[p].g);
+
+                    float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
+                    float oldTrailThick = PaintTexture[p].a;
+                    float trailVisRate = (effectiveAbsorb < 0.05)
+                    ? max(paintLayerThickness * 0.8, 0.08)
+                        : max(paintLayerThickness * 0.5, 0.02);
+                    float old = PaintTexture[p].a;
+
+                    float shape = alpha * paintLayerThickness;
+                    float flow = trailAlpha * 0.2;
+
+                    float thickness = old * 0.96 + flow;
+                    thickness = max(thickness, shape * 0.6);
+                    thickness = saturate(thickness);
+
+                    PaintTexture[p] = float4(color, thickness);
+                    // GOODI EDITS END
+                }
+        }
+        else
+        {
+            pos = float3(0, -1000, 0);
+            vel = float3(0, 0, 0);
+        }
+
+        Positions[id.x] = pos;
+        Velocities[id.x] = vel;
+        return;
+    }
+    
+
+    float2 hitUV;
+    bool didHit;
+
+    SweptSpherePlaneCollision(
+        pos, vel, prevPos,
+        particleRadius,
+        canvasRestitution,
+        canvasTangentDamping,
+        canvasCentre,
+        canvasNormal,
+        canvasRight,
+        canvasUp,
+        canvasHalfSize,
+        hitUV,
+        didHit
+    );
+
+    if (didHit)
+    {
+        float2 stableUV = hitUV;
+        float bounce = surfaceParams.x;
+        float rough = surfaceParams.y;
+        float absorb = surfaceParams.z;
+
+        float woodMask = saturate((absorb - 0.3) / 0.4);
+        float glassMask = saturate(1.0 - woodMask);
+        float3 normal = canvasNormal;
+
+        // GOODI
+        float3 vN = dot(vel, normal) * normal;
+        float3 vT = vel - vN;
+
+        if (woodMask > 0.2)
+        {
+            float speed = length(vT);
+            float3 dir = (speed > 0.0001) ? (vT / speed) : 0;
+            float burst = speed * 0.6;
+            vT = dir * burst;
+            vT *= exp(-rough * 20.0);
+        }
+
+        float3 motionForPaint = vel;
+        float motionSpeed = length(motionForPaint);
+
+        if (absorb > 0.8)
+            vN = float3(0, 0, 0);
+        else
+            vN = -vN * bounce;
+
+        // OUR VERSION (commented for A/B comparison): uses the actual gravity magnitude, 0.0001 threshold,
+        // and leaves slideDir un-zeroed below threshold.
+        // float3 gravityDir = float3(0, -gravity, 0);
+        // float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
+        // float slideStrength = length(slideDir);
+        // if (slideStrength > 0.0001)
+        //     slideDir /= slideStrength;
+
+        // GOODI EDITS START 
+        float3 gravityDir = float3(0, -1, 0);
+
+        float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
+
+        float slideStrength = length(slideDir);
+
+        if (slideStrength > 0.00001)
+            slideDir /= slideStrength;
+        else
+            slideDir = float3(0, 0, 0);
+        // GOODI EDITS END
+
+        float slip = (1.0 - rough) * pow((1.0 - absorb), 4.0);
+
+        if (absorb < 0.8)
+        {
+            if (woodMask < 0.2)
+                vT += slideDir * slideStrength * slip * deltaTime * 6.0;
+            else
+            {
+                float speed = length(vT);
+                float3 dir = (speed > 0.0001) ? vT / speed : 0;
+                float burst = speed * 0.4;
+                vT = dir * burst;
+                vT *= exp(-rough * 18.0);
+            }
+        }
+        else
+            vT = float3(0, 0, 0);
+
+        //float friction = rough + absorb * 3.0;
+        float friction = rough * 0.35 + absorb * 3.0;//خشونة
+        vT *= max(0.0, 1.0 - friction * deltaTime);
+        vT *= (1.0 - rough * absorb) * (1.0 - woodMask * 0.9);
+        vel = vN + vT;
+
+        float upDot = dot(normal, float3(0, 1, 0));
+        float flatness = abs(upDot);
+
+        float3 targetPos = pos;
+        targetPos = targetPos - normal * (dot(targetPos - canvasCentre, normal) - particleRadius);
+
+        float speedCheck = length(vT);
+        float normalPush = abs(dot(vel, normal));
+        float threshold = lerp(0.01, 0.04, flatness);
+
+        if (speedCheck < threshold && normalPush < 0.015 && flatness > 0.98)
+        {
+            pos = targetPos;
+            vel = float3(0, 0, 0);
+            vT = float3(0, 0, 0);
+        }
+        else
+            pos = targetPos;
+
+        vT *= saturate(1.0 - woodMask * 0.9);
+
+        float absorbFactor = absorb * deltaTime * 8.0;
+        if (absorb > 0.8)
+            absorbFactor *= 3.0;
+        vel *= max(0.0, 1.0 - absorbFactor);
+
+        if (absorb < 0.8)
+            pos += vT * deltaTime;
+    //  END GOODI
+
+        // Mark deposited
+        ParticleStates[id.x] = 2;
+        
+
+        // effectiveAbsorb: only used for paint deposit shape
+        float effectiveAbsorb = absorb * (1.0 - paintAbsorptionResistance);
+
+        // ENVIRONMENT
+        // Temperature: higher temp = paint spreads more
+        // float effectiveSurfaceTension = max(0.01, 0.072 - 0.0001 * temperature);
+        // float tempSpreadFactor = 1.0 / max(0.1, effectiveSurfaceTension);
+
+        // // Humidity: higher humidity = wider, more transparent splat
+        // float humiditySpreadBonus   = humidity * 0.5;
+        // float humidityOpacityFactor = 1.0 - humidity * 0.3;
+
+        // // Evaporation: fades paint alpha slightly on contact
+        // float evapFade = evaporationRate * (1.0 - humidity) * deltaTime;
+
+        // OUR VERSION (commented for A/B comparison): scales the edge-slide speed by distance from
+        // canvas center (weaker near the middle, stronger toward the edges).
+        // if (absorb > 0.8)
+        // {
+        //     float3 edgeFlow = slideDir;
+        //     float2 localOffset = hitUV - float2(0.5, 0.5);
+        //     float edgeFactor = saturate(length(localOffset) * 2.0);
+        //     vel = edgeFlow * paintFlowRate * edgeFactor * 0.06;
+        //     pos = targetPos;
+        // }
+
+        // GOODI EDITS START 
+        if (absorb > 0.8)
+        {
+            vel = slideDir * paintFlowRate * 0.06;
+
+            pos = targetPos;
+        }
+        // GOODI EDITS END
+
+        int2 coord = int2(
+    (int) (stableUV.x * paintTextureSize),
+    (int) (stableUV.y * paintTextureSize)
+);
+
+        // Radius: your original formula, scaled by paintSpread
+        //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
+        //radius = max(radius, 1);
+        float spreadScale = lerp(1.0, paintSpread, paintFlowRate);
+        
+
+        
+
+        float baseSize = lerp(2.0, 10.0, absorb);//خشونة
+
+        float paintSize =
+    lerp(0.7, 1.5, paintMixRate) *
+    lerp(0.8, 1.2, paintFlowRate);
+        float surfaceSize =
+    1.0 + (absorb * 0.6) - (rough * 0.4);
+
+        // GOODI EDITS START -- her version doesn't scale splat size with particle speed; ours did.
+        // Kept here (commented) so we can flip back to compare while debugging trail mixing.
+        // float motionSize =
+        //     1.0 + saturate(length(vT) * 2.5) * 0.4;
+        float motionSize = 1.0;
+        // GOODI EDITS END
+
+        float finalSize =
+    baseSize * paintSize * surfaceSize * motionSize * spreadScale;
+
+        float minRadius =
+    lerp(2.5, 4.0, absorb) * 
+    lerp(1.2, 0.85, paintFlowRate); //خشونة
+
+        int radius = max((int) round(minRadius), (int) round(finalSize));
+        // ENVIRONMENT
+        // int radius = max(3, (int)(lerp(2, 10, absorb + rough * 0.5) * spreadScale * tempSpreadFactor * (1.0 + humiditySpreadBonus)));
+
+        float paintSpeed = length(vT);
+        float streak;
+        if (woodMask < 0.2)
+            streak = paintSpeed * 4.0 * glassMask;
+        else
+        {
+            streak = paintSpeed * 0.6;
+            streak *= exp(-rough * 20.0);
+            streak = min(streak, 0.12);
+        }
+        streak = saturate(streak);
+
+        float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
+
+        for (int x = -radius; x <= radius; x++)
+            for (int y = -radius; y <= radius; y++)
+            {
+                float2 pxy = float2(x, y);
+                if (dot(pxy, pxy) > radius * radius)
+                    continue;
+                int2 p;
+                float angle = atan2((float) y, (float) x);
+                float dist = length(float2(x, y)) / max(radius, 1);
+
+                float splashNoise =
+    frac(sin(dot(float2(angle * 7.3, dist * 13.7) + coord,
+    float2(12.9898, 78.233))) * 43758.5453);
+
+                float splashShape =
+    pow(abs(sin(angle * 8.0 + splashNoise * 4.0)), 5.0);
+
+                float extraSplash =
+    splashShape * radius * 0.6 * dist;
+
+                float2 dir = normalize(float2(x, y));
+                if (length(float2(x, y)) < 0.001)
+                    dir = float2(0, 0);
+
+                float2 base = float2(x, y);
+
+                float2 jitter = float2(
+    frac(sin(dot(base + coord, float2(12.9898, 78.233)))) - 0.5,
+    frac(sin(dot(base + coord, float2(45.164, 94.673)))) - 0.5
+);
+
+                float2 offset = base + jitter * extraSplash;
+
+                int2 irregularOffset = int2(offset);
+
+                if (absorb < 0.7)
+                {
+                    float2 dir2 = float2(0, 0);
+
+                    // GOODI EDITS START 
+                    if (woodMask < 0.2)
+                    {
+                        // if (motionSpeed > 0.0001)
+                        //     dir2 = motionForPaint.xy / motionSpeed;
+                        // streak = saturate(motionSpeed * 4.0) * 0.25;
+
+                        float2 slideDirUV = float2(0, 0);
+
+                        if (motionSpeed > 0.0001)
+                        {
+                            slideDirUV.x = dot(slideDir, canvasRight);
+                            slideDirUV.y = dot(slideDir, canvasUp);
+
+                            if (length(slideDirUV) > 0.0001)
+                                slideDirUV = normalize(slideDirUV);
+
+                            dir2 = slideDirUV;
+                        }
+                        slideDirUV.x = dot(slideDir, canvasRight);
+                        slideDirUV.y = dot(slideDir, canvasUp);
+
+                        if (length(slideDirUV) > 0.0001)
+                            slideDirUV = normalize(slideDirUV);
+
+                        dir2 = slideDirUV;
+                        streak = saturate(motionSpeed * 4.0) * 0.25;
+                    }
+                    // GOODI EDITS END
+                    else
+                    {
+                        float burst = motionSpeed * 0.6;
+                        burst *= exp(-rough * 12.0);
+                        streak = saturate(burst);
+                        streak = min(streak, 0.12);
+                    }
+
+                    p = coord + irregularOffset + int2(
+        (int) (dir2.x * streak * radius),
+        (int) (dir2.y * streak * radius)
+    );
+                }
+                else
+                {
+                    p = coord + irregularOffset;
+                }
+
+                if (p.x < 0 || p.x >= paintTextureSize ||
+            p.y < 0 || p.y >= paintTextureSize)
+                    continue;
+
+// اتجاه السيلان على السطح
+                float2 flowDir = float2(0, 0);
+                if (slideStrength > 0.0001)
+                {
+                    flowDir.x = dot(slideDir, canvasRight);
+                    flowDir.y = dot(slideDir, canvasUp);
+                    flowDir = normalize(flowDir);
+                }
+
+// مقدار الميلان
+                float tiltAmount = 1.0 - flatness;
+
+// تمدد البقعة حسب الميل
+
+// دائرة إذا أفقي، بيضاوي إذا مائل
+                float distF = length(float2(x, y)) / radius;
+                float alpha = saturate(1.0 - distF);
+                //alpha *= (1.0 - rough * distF);
+                alpha *= lerp(1.0, 0.85, rough * distF);//خشونة
+                alpha *= (1.0 - effectiveAbsorb * 0.5);
+
+                // ENVIRONMENT
+                // alpha *= humidityOpacityFactor;
+                // alpha = max(0.0, alpha - evapFade);
+
+
+                //MIXING
+                float depositedMass = alpha;
+
+                // GOODI EDITS START 
+                float4 accum = PaintAccumTexture[p];
+                float storedMass = accum.a;
+                float3 oldPigment = accum.rgb;
+                float storedWetness = PaintStyleTexture[p].r;
+                bool incomingIsWater = paintMixRate > 0.5;
+                bool storedIsWater   = storedWetness > 0.2;
+                bool doMix           = incomingIsWater && storedIsWater;
+                float effectiveOldMass = doMix ? storedMass : 0.0;
+                float newEffectiveMass = effectiveOldMass + depositedMass;
+                float3 avgPigment = (effectiveOldMass * oldPigment + depositedMass * newPigment)
+                          / max(newEffectiveMass, 0.001);
+                float newStoredMass = storedMass + depositedMass;
+                PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
+                float spongeMask = saturate((absorb - 0.6) / 0.3);
+                float3 color = avgPigment * avgPigment;
+                float luminance = dot(color, float3(0.299, 0.587, 0.114));
+                float3 spongeColor = lerp(color, luminance.xxx, 0.30);
+                float3 displayColor = lerp(color, spongeColor, spongeMask);
+                displayColor = clamp(displayColor, 0.0, 1.0);
+                displayColor *= (1.0 - absorb * 0.03);
+                float oldDepThick = PaintTexture[p].a;
+                float thickDeposit = depositedMass * paintLayerThickness * (1.0 - effectiveAbsorb * 0.8);
+                thickDeposit = max(thickDeposit, depositedMass * 0.01);
+                PaintTexture[p] = float4(displayColor, min(oldDepThick + thickDeposit, 1.0));
+                float2 oldStyle = PaintStyleTexture[p];
+                float oldStyleMass = storedMass;
+                float newStyleMass = oldStyleMass + depositedMass;
+                float newBump = (oldStyleMass * oldStyle.g + depositedMass * paintBumpStrength) / max(newStyleMass, 0.001);
+                PaintStyleTexture[p] = float2(paintWetnessGloss, newBump);
+                // GOODI EDITS END
+            }
+    }
+    if (!didHit && ParticleStates[id.x] != 2)
+    {
+        float3 n = canvasNormal;
+        float dist = dot(pos - canvasCentre, n);
+        if (dist < particleRadius && dist > -particleRadius * 2.0)
+        {
+            float u = dot(pos - canvasCentre, canvasRight);
+            float v = dot(pos - canvasCentre, canvasUp);
+            if (abs(u) <= canvasHalfSize.x && abs(v) <= canvasHalfSize.y)
+            {
+            // Treat as hit — set UV and mark deposited
+                hitUV = float2(
+                1.0 - (u / canvasHalfSize.x + 1.0) * 0.5,
+                1.0 - (v / canvasHalfSize.y + 1.0) * 0.5
+            );
+                ParticleStates[id.x] = 2;
+                vel = float3(0, 0, 0);
+                pos = pos - n * (dist - particleRadius);
+            }
+        }
+    }
+
+    
+
+    Positions[id.x] = pos;
+    Velocities[id.x] = vel;
+        if (abs(pos.x - sensorCenter.x) <= sensorExtents.x &&
+    abs(pos.y - sensorCenter.y) <= sensorExtents.y &&
+    abs(pos.z - sensorCenter.z) <= sensorExtents.z)
+{
+    InterlockedAdd(FlowResultBuffer[0], 1);
+    InterlockedAdd(FlowResultBuffer[1], (int)(vel.x * 1000.0f));
+    InterlockedAdd(FlowResultBuffer[2], (int)(vel.y * 1000.0f));
+    InterlockedAdd(FlowResultBuffer[3], (int)(vel.z * 1000.0f));
+}
+
+}

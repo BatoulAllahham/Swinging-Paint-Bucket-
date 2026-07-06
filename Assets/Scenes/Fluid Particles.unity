@@ -119,6 +119,126 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &1058016328 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 9213789648226665038, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+  m_PrefabInstance: {fileID: 8108616917925399548}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1058016330 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+  m_PrefabInstance: {fileID: 8108616917925399548}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1058016328}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f99a384512b94654fbeb7c06c43f81ba, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1058016331
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1058016328}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 299b70a3a2aa54686b9111f4184037cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PaintSim.Fluid.Simulation.FluidOnlySim
+  paintTextureResolution: 512
+  canvasMaterial: {fileID: 0}
+  paintColour: {r: 0, g: 0, b: 1, a: 1}
+  paintType: 0
+  normalTimeScale: 1
+  maxTimestepFPS: 60
+  iterationsPerFrame: 3
+  gravity: -10
+  smoothingRadius: 0.2
+  targetDensity: 2000
+  pressureMultiplier: 90
+  nearPressureMultiplier: 90
+  springStiffness: 0.3
+  plasticityRate: 0.3
+  yieldRatio: 0.1
+  viscosityStrength: 0
+  weightPerParticle: 0.0001
+  collisionDamping: 0.95
+  holePosition: {x: 0, y: 0, z: 0}
+  holeOrientation: 0
+  holeSize: 0.1
+  surfaceType: 0
+  temperature: 25
+  humidity: 0.5
+  evaporationRate: 0.01
+  currentParticleCount: 0
+  currentBucketWeight: 0
+  sensorCenter: {x: 0, y: 0, z: 0}
+  sensorExtents: {x: 0.5, y: 0.1, z: 0.5}
+  currentFlowSpeed: 0
+  bucketTransform: {fileID: 1615739522}
+  compute: {fileID: 7200000, guid: 9c31a75beb4c3496bb79e555dfef65a4, type: 3}
+  spawner: {fileID: 1058016330}
+  canvasCollision: {fileID: 1459465449}
+  bounceOffset: 1
+  roughnessOffset: 0.02
+  absorptionOffset: 0
+--- !u!1 &1241664701
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1241664703}
+  - component: {fileID: 1241664702}
+  m_Layer: 5
+  m_Name: UIDocument
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1241664702
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1241664701}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
+  m_PanelSettings: {fileID: 11400000, guid: fdd6df6751fda4a10ba78e6de07ec98a, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: c64cab0c00e42442eaaf6d19d7c575de, type: 3}
+  m_SortingOrder: 0
+  m_Position: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+  m_PivotReferenceSize: 0
+  m_Pivot: 0
+  m_WorldSpaceCollider: {fileID: 0}
+--- !u!4 &1241664703
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1241664701}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1459465448
 GameObject:
   m_ObjectHideFlags: 0
@@ -201,7 +321,7 @@ BoxCollider:
   m_LayerOverridePriority: 0
   m_IsTrigger: 0
   m_ProvidesContacts: 0
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
@@ -230,7 +350,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 15302, guid: 0000000000000000f000000000000000, type: 0}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -375,6 +495,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 2585279340253128925, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: canvasMaterial
       value: 
@@ -396,6 +524,10 @@ PrefabInstance:
       value: FluidSimulation
       objectReference: {fileID: 0}
     - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: num_particles
+      value: 121107
+      objectReference: {fileID: 0}
+    - target: {fileID: 5200391983029022659, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: fillPercentage
       value: 0.844
       objectReference: {fileID: 0}
@@ -411,6 +543,10 @@ PrefabInstance:
       propertyPath: simulationTargetDensity
       value: 800
       objectReference: {fileID: 0}
+    - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      propertyPath: sim
+      value: 
+      objectReference: {fileID: 1058016331}
     - target: {fileID: 5521526311539611876, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: mode
       value: 1
@@ -455,10 +591,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 9213789648226665038, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1058016331}
   m_SourcePrefab: {fileID: 100100000, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
@@ -467,3 +607,4 @@ SceneRoots:
   - {fileID: 8108616917925399548}
   - {fileID: 1459465450}
   - {fileID: 1615739522}
+  - {fileID: 1241664703}

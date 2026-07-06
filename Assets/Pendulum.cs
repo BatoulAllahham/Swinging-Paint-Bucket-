@@ -16,7 +16,7 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float phiDegree = 45.0f;
 
     [Header("Swinging Rate")]
-    [SerializeField] private float swingingRate;
+    [SerializeField]  float swingingRate;
 
     [Header("Forces")]
     [SerializeField] float gravity = 9.81f;
@@ -151,6 +151,7 @@ public class Pendulum : MonoBehaviour
     public float Gravity { get => gravity; set => gravity = value; }
     public float AirDensity { get => airDensity; set => airDensity = value; }
     public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
+     public float SwingingRate { get => swingingRate; set => swingingRate = value; }
 
 
 

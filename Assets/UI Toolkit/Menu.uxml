@@ -1,0 +1,40 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <Style src="Menu.uss" />
+    
+    <ui:VisualElement class="menu-container">
+        
+        <ui:VisualElement class="menu-window">
+            
+            <ui:VisualElement class="header-container">
+                <ui:Label text="Swinging Paint Bucket" class="title-text" />
+                <ui:Label text="COMPUTE ENGINE" class="subtitle-text" />
+            </ui:VisualElement>
+            
+            <ui:VisualElement class="modules-grid">
+                
+                <ui:VisualElement class="module-card" style="border-top-color: #3b82f6;">
+                    <ui:Label text="Full Simulation" class="module-title" />
+                    <ui:Label text="Complete environment featuring pendulum dynamics interacting with SPH fluid mechanics and Color mixing on a canvas." class="module-desc" />
+                    <ui:Button name="btn-main-sim" class="invisible-btn" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="module-card" style="border-top-color: #10b981;">
+                    <ui:Label text="Fluid Only" class="module-title" />
+                    <ui:Label text="Isolated compute shader fluid environment for stress-testing particle limits and leakage configurations." class="module-desc" />
+                    <ui:Button name="btn-fluid-only" class="invisible-btn" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="module-card" style="border-top-color: #8b5cf6;">
+                    <ui:Label text="Color Lab" class="module-title" />
+                    <ui:Label text="Dedicated canvas workspace for testing viscosity, paint blending, and surface material reactions." class="module-desc" />
+                    <ui:Button name="btn-color-mix" class="invisible-btn" />
+                </ui:VisualElement>
+
+            </ui:VisualElement>
+
+            <ui:Label text="Build v1.0.0 | JJABB" class="footer-text" />
+            
+        </ui:VisualElement>
+        
+    </ui:VisualElement>
+</ui:UXML>

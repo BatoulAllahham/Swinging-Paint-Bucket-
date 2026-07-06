@@ -1,11 +1,11 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements">
-    <Style src="FluidStyle.uss" />
+   <Style src="FluidStyle.uss" />
 
     <ui:VisualElement class="app-wrapper">
         <ui:VisualElement class="left-panel">
             
             <ui:VisualElement class="header-section">
-                <ui:Label text="PAINT SIMULATION" class="main-title" />
+                <ui:Label text="SPB SIMULATION" class="main-title" />
             </ui:VisualElement>
 
             <ui:ScrollView class="settings-scroll" shows-vertical-scroller="true">
@@ -36,7 +36,7 @@
                         <ui:Slider name="canvas-rot-z" label="Canvas Rotation Z" low-value="-90" high-value="90" show-input-field="true" />
                     </ui:VisualElement>
 
-                    <ui:Button name="confirm-setup-btn" text="LOAD SIMULATION WORLD" class="action-btn" style="background-color: #3b82f6; color: #ffffff; margin-top: 15px; margin-bottom: 25px;" />
+                    <ui:Button name="confirm-setup-btn" text="Next" class="action-btn" style="background-color: #3b82f6; color: #ffffff; margin-top: 15px; margin-bottom: 25px;" />
                 </ui:VisualElement>
 
                 <ui:VisualElement name="main-simulation-panel" style="flex-grow: 1; display: none;">
@@ -95,6 +95,7 @@
                             <ui:Slider name="pen-phi-deg" label="Phi Angle (°)" low-value="-90" high-value="90" show-input-field="true" />
                             <ui:Slider name="pen-gravity" label="Pendulum Gravity" low-value="0" high-value="30" show-input-field="true" />
                             <ui:Slider name="pen-air-density" label="Air Density" low-value="0" high-value="5" show-input-field="true" />
+                            <ui:Slider name="swinging-rate" label="Swinging Rate" low-value="0" high-value="10" show-input-field="true" />
                             <ui:Slider name="pen-drag" label="Drag Coefficient" low-value="0" high-value="3" show-input-field="true" />
                         </ui:VisualElement>
                     </ui:Foldout>
@@ -123,7 +124,8 @@
 
                     <ui:VisualElement class="footer-section" style="flex-direction: row; justify-content: space-between; margin-top: 15px; margin-bottom: 25px;">
                         <ui:Button name="play-pause-btn" text="START PENDULUM" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
-                        <ui:Button name="reset-btn" text="RESET ALL" class="action-btn" style="flex-grow: 1;" />
+                        <ui:Button name="reset-btn" text="RESET" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #ffff66; color: #1f0202;" />
+                        <ui:Button name="back-to-menu-btn" text="BACK TO MENU" class="action-btn" style="flex-grow: 1;background-color: #898985; color: #0f0101;" />
                     </ui:VisualElement>
 
                 </ui:VisualElement>

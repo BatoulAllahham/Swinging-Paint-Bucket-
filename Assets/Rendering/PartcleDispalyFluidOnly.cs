@@ -5,7 +5,7 @@ using PaintSim.Fluid.Simulation;
 namespace PaintSim.Fluid.Rendering
 {
 
-	public class ParticleDisplay3D : MonoBehaviour
+	public class ParticleDisplayFluidOnly3D : MonoBehaviour
 	{
 		public enum DisplayMode
 		{
@@ -20,12 +20,11 @@ namespace PaintSim.Fluid.Rendering
 		public float velocityDisplayMax;
 		public int meshResolution;
 
-		[Header("References")] public FluidSim sim;
+		[Header("References")] public FluidOnlySim sim;
 		
 		public Shader shaderBillboard;
 
 		Mesh mesh;
-
 		Material mat;
 		ComputeBuffer argsBuffer;
 		Texture2D gradientTexture;

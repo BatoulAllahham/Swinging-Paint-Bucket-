@@ -80,6 +80,7 @@ public class FluidMasterUI : MonoBehaviour
                 UpdateSliderLiveValue("pen-phi-vel", pendulum.PhiAngularVelocity);
                 UpdateSliderLiveValue("pen-theta-deg", pendulum.ThetaDegree);
                 UpdateSliderLiveValue("pen-phi-deg", pendulum.PhiDegree);
+                UpdateSliderLiveValue("swinging-rate", pendulum.SwingingRate);
             }
         }
     }
@@ -132,6 +133,47 @@ public class FluidMasterUI : MonoBehaviour
         if (colorPreview != null) colorPreview.style.backgroundColor = c;
     }
 
+private void ClearCanvasTextures()
+{
+    var prevActive = RenderTexture.active;
+
+    // 1. Wipe the shared rendering textures clean
+    ClearSharedTexture("sharedPaintAccumTexture");
+    ClearSharedTexture("sharedPaintStyleTexture");
+
+    // 2. Wipe the individual canvas/paint textures for ALL available buckets in the scene
+    if (allBuckets != null)
+    {
+        foreach (var bucket in allBuckets)
+        {
+            ClearInstanceTexture(bucket, "paintTexture");
+        }
+    }
+
+    RenderTexture.active = prevActive;
+}
+
+private void ClearSharedTexture(string fieldName)
+{
+    var field = typeof(FluidSim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    var rt = field?.GetValue(null) as RenderTexture;
+    if (rt == null) return;
+
+    RenderTexture.active = rt;
+    GL.Clear(false, true, Color.clear);
+}
+
+private void ClearInstanceTexture(FluidSim sim, string fieldName)
+{
+    if (sim == null) return;
+    var field = typeof(FluidSim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    var rt = field?.GetValue(sim) as RenderTexture;
+    if (rt == null) return;
+
+    RenderTexture.active = rt;
+    GL.Clear(false, true, Color.clear);
+}
+
     void RegisterAllCallbacks(VisualElement root)
     {
         var confirmBtn = root.Q<Button>("confirm-setup-btn");
@@ -141,6 +183,7 @@ public class FluidMasterUI : MonoBehaviour
                 if (activeBucket != null)
                 {
                     activeBucket.ApplySurfacePreset();
+                    activeBucket.ApplyPaintTypeSettings();
                     activeBucket.ResetParticles(); 
                 }
 
@@ -170,44 +213,77 @@ public class FluidMasterUI : MonoBehaviour
             };
         }
 
-        if (resetBtn != null)
-        {
-            resetBtn.clicked += () => {
-                if (isPlaying && playBtn != null) {
-                    isPlaying = false;
-                    playBtn.text = "START PENDULUM";
-                    ColorUtility.TryParseHtmlString("#059669", out Color defaultGreen);
-                    playBtn.style.backgroundColor = defaultGreen;
-                    
-                    var pend = GetPendulum();
-                    if (pend != null) pend.isSimulating = false;
-                    
-                    var rop = GetRope();
-                    if (rop != null) rop.isSimulating = false;
-                }
-                
-                if (activeBucket != null) activeBucket.ResetParticles();
-                
-                var p = GetPendulum();
-                if (p != null) p.ResetToInitial();
-                
-                var r = GetRope();
-                if (r != null) r.ResetRope();
-
-                if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
-                if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
-                
-                UpdateVisualsToMatchBucket(root, activeBucket);
-            };
+if (resetBtn != null)
+{
+    resetBtn.clicked += () => {
+        if (isPlaying && playBtn != null) {
+            isPlaying = false;
+            playBtn.text = "START PENDULUM";
+            ColorUtility.TryParseHtmlString("#059669", out Color defaultGreen);
+            playBtn.style.backgroundColor = defaultGreen;
+            
+            var pend = GetPendulum();
+            if (pend != null) pend.isSimulating = false;
+            
+            var rop = GetRope();
+            if (rop != null) rop.isSimulating = false;
         }
+        
+        ClearCanvasTextures();
+
+        // Reset particles for all buckets to clean up old frames completely
+        if (allBuckets != null)
+        {
+            foreach (var bucket in allBuckets)
+            {
+                bucket.ResetParticles();
+                bucket.holeSize = 0f; // Seal up the holes on reset
+            }
+        }
+        else if (activeBucket != null)
+        {
+            activeBucket.ResetParticles();
+        }
+        
+        var p = GetPendulum();
+        if (p != null){ p.ResetToInitial();
+        p.ThetaAngularVelocity = 0f;
+            p.PhiAngularVelocity = 0f;
+            p.ThetaDegree = 45f;    // Set to your actual default starting angle
+            p.PhiDegree = 0f;       // Set to your actual default starting angle
+            p.Gravity = 9.81f;      // Standard gravity
+            p.AirDensity = 1.2f;    // Standard air density
+            p.DragCoefficient = 0.5f; 
+            p.SwingingRate = 1f;}
+
+        
+        var r = GetRope();
+        if (r != null) r.ResetRope();
+
+        // Go back to the configuration screen to allow changes to baseline parameters
+        if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
+        if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
+        
+        UpdateVisualsToMatchBucket(root, activeBucket);
+    };
+}
 
         root.Q<Slider>("color-r")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.r = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
         root.Q<Slider>("color-g")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.g = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
         root.Q<Slider>("color-b")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.b = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
         
-        root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { activeBucket.paintType = (FluidSim.PaintType)evt.newValue; } });
-        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { activeBucket.surfaceType = (FluidSim.SurfaceType)evt.newValue; } });
-        
+        root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => {
+             if (activeBucket != null) { 
+                activeBucket.paintType = (FluidSim.PaintType)evt.newValue;
+                activeBucket.ApplyPaintTypeSettings();
+                 } });
+        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => 
+        { if (activeBucket != null) 
+    { 
+        activeBucket.surfaceType = (FluidSim.SurfaceType)evt.newValue; 
+        activeBucket.ApplySurfacePreset(); 
+    } 
+});
         root.Q<Slider>("canvas-rot-x")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.x = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
         root.Q<Slider>("canvas-rot-y")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.y = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
         root.Q<Slider>("canvas-rot-z")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.z = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
@@ -219,7 +295,7 @@ public class FluidMasterUI : MonoBehaviour
         root.Q<Slider>("pen-gravity")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.Gravity = evt.newValue; });
         root.Q<Slider>("pen-air-density")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.AirDensity = evt.newValue; });
         root.Q<Slider>("pen-drag")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.DragCoefficient = evt.newValue; });
-
+        root.Q<Slider>("swinging-rate")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.SwingingRate = evt.newValue; });
         root.Q<EnumField>("rope-type")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.Type = (Rope.RopeType)evt.newValue; });
         root.Q<Slider>("rope-length")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.RopeLengthProperty = evt.newValue; });
         root.Q<Slider>("rope-mass")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.TotalRopeMass = evt.newValue; });
@@ -277,6 +353,9 @@ public class FluidMasterUI : MonoBehaviour
         root.Q<Slider>("temp-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.temperature = evt.newValue; });
         root.Q<Slider>("humidity-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.humidity = evt.newValue; });
         root.Q<Slider>("evap-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.evaporationRate = evt.newValue; });
+        root.Q<Button>("back-to-menu-btn")?.RegisterCallback<ClickEvent>(evt => {
+    UnityEngine.SceneManagement.SceneManager.LoadScene("Main Menu");
+});
     }
 
     void UpdateVisualsToMatchBucket(VisualElement root, FluidSim bucket)
@@ -314,6 +393,7 @@ public class FluidMasterUI : MonoBehaviour
             root.Q<Slider>("pen-phi-deg")?.SetValueWithoutNotify(pendulum.PhiDegree);
             root.Q<Slider>("pen-gravity")?.SetValueWithoutNotify(pendulum.Gravity);
             root.Q<Slider>("pen-air-density")?.SetValueWithoutNotify(pendulum.AirDensity);
+            root.Q<Slider>("swinging-rate")?.SetValueWithoutNotify(pendulum.SwingingRate);
             root.Q<Slider>("pen-drag")?.SetValueWithoutNotify(pendulum.DragCoefficient);
         }
 

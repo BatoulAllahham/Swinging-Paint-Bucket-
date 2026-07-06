@@ -1,0 +1,98 @@
+:root {
+    --bg-dark: #0f172a;
+    --card-bg: #1e293b;
+    --card-hover: #27354f;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-blue: #3b82f6;
+    --border-radius: 12px;
+}
+
+.menu-container {
+    flex-grow: 1;
+    background-color: var(--bg-dark);
+    align-items: center;
+    justify-content: center;
+}
+
+/* The Main Window */
+.menu-window {
+    width: 800px;
+    background-color: transparent;
+}
+
+/* Header Styling */
+.header-container {
+    margin-bottom: 40px;
+    align-items: center;
+}
+
+.title-text {
+    font-size: 42px;
+    -unity-font-style: bold;
+    color: var(--text-main);
+    letter-spacing: 4px;
+    margin-bottom: 8px;
+}
+
+.subtitle-text {
+    font-size: 16px;
+    color: var(--accent-blue);
+    letter-spacing: 1px;
+}
+
+/* Layout for the selection cards */
+.modules-grid {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 40px;
+}
+
+/* Interactive Module Cards */
+.module-card {
+    width: 32%;
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius);
+    padding: 24px;
+    border-width: 1px;
+    border-color: #334155;
+    border-top-width: 4px;
+    transition-duration: 0.2s;
+}
+
+.module-card:hover {
+    background-color: var(--card-hover);
+    scale: 1.05;
+    border-color: var(--accent-blue);
+}
+
+.module-title {
+    font-size: 18px;
+    -unity-font-style: bold;
+    color: var(--text-main);
+    margin-bottom: 12px;
+    white-space: normal;
+}
+
+.module-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: normal;
+    margin-bottom: 20px;
+    flex-grow: 1;
+}
+
+/* Invisible button that stretches over the whole card */
+.invisible-btn {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0;
+    cursor: link;
+}
+
+/* Footer Metadata */
+.footer-text {
+    font-size: 12px;
+    color: #475569;
+    -unity-text-align: middle-center;
+}
