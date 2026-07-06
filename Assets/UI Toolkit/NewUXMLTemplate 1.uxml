@@ -15,112 +15,120 @@
                     <ui:ScrollView name="bucket-list" class="bucket-list" />
                 </ui:VisualElement>
 
-                <ui:VisualElement class="card">
-                    <ui:Label text="PAINT &amp; CANVAS OPTIONS" class="card-title" />
+                <ui:VisualElement name="initial-config-panel" style="flex-grow: 1; display: flex;">
                     
-                    <ui:VisualElement class="color-picker-container">
-                        <ui:VisualElement name="color-preview" class="color-preview-box-large" />
-                        <ui:VisualElement class="color-sliders-group">
-                            <ui:Slider name="color-r" label="Red" low-value="0" high-value="1" show-input-field="true" />
-                            <ui:Slider name="color-g" label="Green" low-value="0" high-value="1" show-input-field="true" />
-                            <ui:Slider name="color-b" label="Blue" low-value="0" high-value="1" show-input-field="true" />
+                    <ui:VisualElement class="card">
+                        <ui:Label text="PAINT &amp; CANVAS INITIAL OPTIONS" class="card-title" />
+                        
+                        <ui:VisualElement class="color-picker-container">
+                            <ui:VisualElement name="color-preview" class="color-preview-box-large" />
+                            <ui:VisualElement class="color-sliders-group">
+                                <ui:Slider name="color-r" label="Red" low-value="0" high-value="1" show-input-field="true" />
+                                <ui:Slider name="color-g" label="Green" low-value="0" high-value="1" show-input-field="true" />
+                                <ui:Slider name="color-b" label="Blue" low-value="0" high-value="1" show-input-field="true" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        
+                        <ui:EnumField name="paint-type" label="Paint Type" />
+                        <ui:EnumField name="canvas-type" label="Surface Material" />
+                        <ui:Slider name="canvas-rot-x" label="Canvas Rotation X" low-value="-90" high-value="0" show-input-field="true" />
+                        <ui:Slider name="canvas-rot-y" label="Canvas Rotation Y" low-value="-180" high-value="180" show-input-field="true" />
+                        <ui:Slider name="canvas-rot-z" label="Canvas Rotation Z" low-value="-90" high-value="90" show-input-field="true" />
+                    </ui:VisualElement>
+
+                    <ui:Button name="confirm-setup-btn" text="LOAD SIMULATION WORLD" class="action-btn" style="background-color: #3b82f6; color: #ffffff; margin-top: 15px; margin-bottom: 25px;" />
+                </ui:VisualElement>
+
+                <ui:VisualElement name="main-simulation-panel" style="flex-grow: 1; display: none;">
+
+                    <ui:VisualElement class="card">
+                        <ui:Label text="CONTAINER LEAK SETTINGS" class="card-title" />
+                        <ui:Slider name="hole-size" label="Hole Size" low-value="0" high-value="0.5" show-input-field="true" />
+                        <ui:DropdownField name="hole-placement" label="Placement" choices="Bottom,Side" />
+                        
+                        <ui:VisualElement name="hole-top-bottom-controls">
+                            <ui:Slider name="hole-x" label="X Position" low-value="-0.45" high-value="0.45" show-input-field="true" />
+                            <ui:Slider name="hole-z" label="Z Position" low-value="-0.45" high-value="0.45" show-input-field="true" />
+                        </ui:VisualElement>
+                        
+                        <ui:VisualElement name="hole-side-controls" style="display: none;">
+                            <ui:DropdownField name="hole-side-x" label="Side Facing" choices="Left (-0.5),Right (0.5)" />
+                            <ui:Slider name="hole-y" label="Y Height" low-value="-1.0" high-value="1.0" show-input-field="true" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    
-                    <ui:EnumField name="paint-type" label="Paint Type" />
-                    <ui:EnumField name="canvas-type" label="Surface Material" />
-                    <ui:Slider name="canvas-rot-x" label="Canvas Rotation X" low-value="0" high-value="360" show-input-field="true" />
-                    <ui:Slider name="canvas-rot-y" label="Canvas Rotation Y" low-value="0" high-value="360" show-input-field="true" />
-                    <ui:Slider name="canvas-rot-z" label="Canvas Rotation Z" low-value="0" high-value="360" show-input-field="true" />
-                </ui:VisualElement>
 
-                <ui:VisualElement class="card">
-                    <ui:Label text="CONTAINER LEAK SETTINGS" class="card-title" />
-                    <ui:Slider name="hole-size" label="Hole Size" low-value="0" high-value="0.5" show-input-field="true" />
-                    <ui:DropdownField name="hole-placement" label="Placement" choices="Bottom,Side" />
-                    
-                    <ui:VisualElement name="hole-top-bottom-controls">
-                        <ui:Slider name="hole-x" label="X Position" low-value="-0.45" high-value="0.45" show-input-field="true" />
-                        <ui:Slider name="hole-z" label="Z Position" low-value="-0.45" high-value="0.45" show-input-field="true" />
-                    </ui:VisualElement>
-                    
-                    <ui:VisualElement name="hole-side-controls" style="display: none;">
-                        <ui:DropdownField name="hole-side-x" label="Side Facing" choices="Left (-0.5),Right (0.5)" />
-                        <ui:Slider name="hole-y" label="Y Height" low-value="-1.0" high-value="1.0" show-input-field="true" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-
-                <ui:VisualElement class="card">
-                    <ui:Label text="ENVIRONMENT" class="card-title" />
-                    <ui:Slider name="temp-slider" label="Temperature (°C)" low-value="-10" high-value="60" show-input-field="true" />
-                    <ui:Slider name="humidity-slider" label="Humidity" low-value="0" high-value="1.0" show-input-field="true" />
-                    <ui:Slider name="evap-slider" label="Evaporation" low-value="0" high-value="0.1" show-input-field="true" />
-                </ui:VisualElement>
-
-                <ui:VisualElement class="card">
-                    <ui:Label text="SIMULATION TIME" class="card-title" />
-                    <ui:Slider name="time-scale" label="Time Scale" low-value="0.1" high-value="3.0" show-input-field="true" />
-                    <ui:Slider name="max-fps" label="Max FPS" low-value="0" high-value="144" show-input-field="true" />
-                    <ui:SliderInt name="iterations" label="Iterations/Frame" low-value="1" high-value="10" show-input-field="true" />
-                </ui:VisualElement>
-
-                <ui:Foldout text="SPH Properties" value="false" class="pro-foldout">
                     <ui:VisualElement class="card">
-                        <ui:Slider name="gravity" label="Gravity" low-value="-30" high-value="10" show-input-field="true" />
-                        <ui:Slider name="radius" label="Smooth Radius" low-value="0.05" high-value="0.5" show-input-field="true" />
-                        <ui:Slider name="density" label="Target Density" low-value="100" high-value="3000" show-input-field="true" />
-                        <ui:Slider name="pressure" label="Pressure Mult" low-value="0" high-value="1000" show-input-field="true" />
-                        <ui:Slider name="near-pressure" label="Near Pressure" low-value="0" high-value="1000" show-input-field="true" />
-                        <ui:Slider name="stiffness" label="Spring Stiffness" low-value="0" high-value="10000.0" show-input-field="true" />
-                        <ui:Slider name="plasticity" label="Plasticity Rate" low-value="0" high-value="1.0" show-input-field="true" />
-                        <ui:Slider name="yield" label="Yield Ratio" low-value="0" high-value="0.5" show-input-field="true" />
-                        <ui:Slider name="viscosity" label="Viscosity" low-value="0" high-value="0.005" show-input-field="true" />
-                        <ui:Slider name="damping" label="Col Damping" low-value="0" high-value="1.0" show-input-field="true" />
-                        <ui:Slider name="weight" label="Weight/Particle" low-value="0.00001" high-value="0.001" show-input-field="true" />
+                        <ui:Label text="ENVIRONMENT" class="card-title" />
+                        <ui:Slider name="temp-slider" label="Temperature (°C)" low-value="-10" high-value="60" show-input-field="true" />
+                        <ui:Slider name="humidity-slider" label="Humidity" low-value="0" high-value="1.0" show-input-field="true" />
+                        <ui:Slider name="evap-slider" label="Evaporation" low-value="0" high-value="0.1" show-input-field="true" />
                     </ui:VisualElement>
-                </ui:Foldout>
 
-                <ui:Foldout text="PENDULUM DYNAMICS" value="false" class="pro-foldout">
                     <ui:VisualElement class="card">
-                        <ui:Slider name="pen-theta-vel" label="Theta Angular Velo" low-value="-100" high-value="100" show-input-field="true" />
-                        <ui:Slider name="pen-phi-vel" label="Phi Angular Velo" low-value="-100" high-value="100" show-input-field="true" />
-                        <ui:Slider name="pen-theta-deg" label="Theta Angle (°)" low-value="-90" high-value="90" show-input-field="true" />
-                        <ui:Slider name="pen-phi-deg" label="Phi Angle (°)" low-value="-90" high-value="90" show-input-field="true" />
-                        <ui:Slider name="pen-gravity" label="Pendulum Gravity" low-value="0" high-value="30" show-input-field="true" />
-                        <ui:Slider name="pen-air-density" label="Air Density" low-value="0" high-value="5" show-input-field="true" />
-                        <ui:Slider name="pen-drag" label="Drag Coefficient" low-value="0" high-value="3" show-input-field="true" />
+                        <ui:Label text="SIMULATION TIME" class="card-title" />
+                        <ui:Slider name="time-scale" label="Time Scale" low-value="0.1" high-value="3.0" show-input-field="true" />
+                        <ui:Slider name="max-fps" label="Max FPS" low-value="0" high-value="144" show-input-field="true" />
+                        <ui:SliderInt name="iterations" label="Iterations/Frame" low-value="1" high-value="10" show-input-field="true" />
                     </ui:VisualElement>
-                </ui:Foldout>
 
-                <ui:Foldout text="ROPE PROPERTIES" value="false" class="pro-foldout">
-                    <ui:VisualElement class="card">
-                        <ui:EnumField name="rope-type" label="Rope Material" />
-                        <ui:Slider name="rope-length" label="Rope Length" low-value="0.5" high-value="20" show-input-field="true" />
-                        <ui:Slider name="rope-mass" label="Total Rope Mass" low-value="0" high-value="5" show-input-field="true" />
-                        <ui:SliderInt name="rope-segments" label="Segments Count" low-value="5" high-value="100" show-input-field="true" />
-                        <ui:Slider name="rope-radius" label="Rope Thickness" low-value="0.01" high-value="0.3" show-input-field="true" />
-                        <ui:SliderInt name="rope-radial-seg" label="Radial Fidelity" low-value="3" high-value="16" show-input-field="true" />
-                        <ui:Slider name="rope-gravity" label="Internal Gravity" low-value="0" high-value="30" show-input-field="true" />
-                        <ui:SliderInt name="rope-iterations" label="Constraint Iters" low-value="1" high-value="50" show-input-field="true" />
-                        <ui:SliderInt name="rope-substeps" label="Solver Substeps" low-value="1" high-value="16" show-input-field="true" />
+                    <ui:Foldout text="SPH Properties" value="false" class="pro-foldout">
+                        <ui:VisualElement class="card">
+                            <ui:Slider name="gravity" label="Gravity" low-value="-30" high-value="10" show-input-field="true" />
+                            <ui:Slider name="radius" label="Smooth Radius" low-value="0.05" high-value="0.5" show-input-field="true" />
+                            <ui:Slider name="density" label="Target Density" low-value="100" high-value="3000" show-input-field="true" />
+                            <ui:Slider name="pressure" label="Pressure Mult" low-value="0" high-value="1000" show-input-field="true" />
+                            <ui:Slider name="near-pressure" label="Near Pressure" low-value="0" high-value="1000" show-input-field="true" />
+                            <ui:Slider name="stiffness" label="Spring Stiffness" low-value="0" high-value="10000.0" show-input-field="true" />
+                            <ui:Slider name="plasticity" label="Plasticity Rate" low-value="0" high-value="1.0" show-input-field="true" />
+                            <ui:Slider name="yield" label="Yield Ratio" low-value="0" high-value="0.5" show-input-field="true" />
+                            <ui:Slider name="viscosity" label="Viscosity" low-value="0" high-value="0.005" show-input-field="true" />
+                            <ui:Slider name="damping" label="Col Damping" low-value="0" high-value="1.0" show-input-field="true" />
+                            <ui:Slider name="weight" label="Weight/Particle" low-value="0.00001" high-value="0.001" show-input-field="true" />
+                        </ui:VisualElement>
+                    </ui:Foldout>
+
+                    <ui:Foldout text="PENDULUM DYNAMICS" value="false" class="pro-foldout">
+                        <ui:VisualElement class="card">
+                            <ui:Slider name="pen-theta-vel" label="Theta Angular Velo" low-value="-100" high-value="100" show-input-field="true" />
+                            <ui:Slider name="pen-phi-vel" label="Phi Angular Velo" low-value="-100" high-value="100" show-input-field="true" />
+                            <ui:Slider name="pen-theta-deg" label="Theta Angle (°)" low-value="-90" high-value="90" show-input-field="true" />
+                            <ui:Slider name="pen-phi-deg" label="Phi Angle (°)" low-value="-90" high-value="90" show-input-field="true" />
+                            <ui:Slider name="pen-gravity" label="Pendulum Gravity" low-value="0" high-value="30" show-input-field="true" />
+                            <ui:Slider name="pen-air-density" label="Air Density" low-value="0" high-value="5" show-input-field="true" />
+                            <ui:Slider name="pen-drag" label="Drag Coefficient" low-value="0" high-value="3" show-input-field="true" />
+                        </ui:VisualElement>
+                    </ui:Foldout>
+
+                    <ui:Foldout text="ROPE PROPERTIES" value="false" class="pro-foldout">
+                        <ui:VisualElement class="card">
+                            <ui:EnumField name="rope-type" label="Rope Material" />
+                            <ui:Slider name="rope-length" label="Rope Length" low-value="0.5" high-value="20" show-input-field="true" />
+                            <ui:Slider name="rope-mass" label="Total Rope Mass" low-value="0" high-value="5" show-input-field="true" />
+                            <ui:SliderInt name="rope-segments" label="Segments Count" low-value="5" high-value="100" show-input-field="true" />
+                            <ui:Slider name="rope-radius" label="Rope Thickness" low-value="0.01" high-value="0.3" show-input-field="true" />
+                            <ui:SliderInt name="rope-radial-seg" label="Radial Fidelity" low-value="3" high-value="16" show-input-field="true" />
+                            <ui:Slider name="rope-gravity" label="Internal Gravity" low-value="0" high-value="30" show-input-field="true" />
+                            <ui:SliderInt name="rope-iterations" label="Constraint Iters" low-value="1" high-value="50" show-input-field="true" />
+                            <ui:SliderInt name="rope-substeps" label="Solver Substeps" low-value="1" high-value="16" show-input-field="true" />
+                        </ui:VisualElement>
+                    </ui:Foldout>
+
+                    <ui:VisualElement class="card monitoring-card">
+                        <ui:Label text="LIVE TELEMETRY" class="card-title text-magenta" />
+                        <ui:Label name="lbl-particles" text="PARTICLES: 0" class="monitor-text" />
+                        <ui:Label name="lbl-weight" text="WEIGHT: 0.000 kg" class="monitor-text" />
+                        <ui:Label name="lbl-flow" text="FLOW SPEED: 0.00" class="monitor-text" />
+                        <ui:Label name="lbl-sensor" text="SENSOR POS: 0.0, 0.0, 0.0" class="monitor-text muted" />
                     </ui:VisualElement>
-                </ui:Foldout>
 
-                <ui:VisualElement class="card monitoring-card">
-                    <ui:Label text="LIVE TELEMETRY" class="card-title text-magenta" />
-                    <ui:Label name="lbl-particles" text="PARTICLES: 0" class="monitor-text" />
-                    <ui:Label name="lbl-weight" text="WEIGHT: 0.000 kg" class="monitor-text" />
-                    <ui:Label name="lbl-flow" text="FLOW SPEED: 0.00" class="monitor-text" />
-                    <ui:Label name="lbl-sensor" text="SENSOR POS: 0.0, 0.0, 0.0" class="monitor-text muted" />
+                    <ui:VisualElement class="footer-section" style="flex-direction: row; justify-content: space-between; margin-top: 15px; margin-bottom: 25px;">
+                        <ui:Button name="play-pause-btn" text="START PENDULUM" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
+                        <ui:Button name="reset-btn" text="RESET ALL" class="action-btn" style="flex-grow: 1;" />
+                    </ui:VisualElement>
+
                 </ui:VisualElement>
 
             </ui:ScrollView>
-
-            <ui:VisualElement class="footer-section" style="flex-direction: row; justify-content: space-between;">
-                <ui:Button name="play-pause-btn" text="START Pendulum" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
-                <ui:Button name="reset-btn" text="RESET ALL" class="action-btn" style="flex-grow: 1;" />
-            </ui:VisualElement>
-
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

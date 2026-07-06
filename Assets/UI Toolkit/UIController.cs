@@ -10,19 +10,21 @@ public class FluidMasterUI : MonoBehaviour
     private ScrollView bucketList;
     private VisualElement rootVisual;
 
+    private VisualElement initialConfigPanel;
+    private VisualElement mainSimulationPanel;
+
     private Label lblParticles, lblWeight, lblFlow, lblSensor;
     private VisualElement topBottomControls, sideControls, colorPreview;
 
     private bool isPlaying = false; 
 
-    // --- BULLETPROOF COMPONENT FINDERS ---
     private Pendulum GetPendulum()
     {
         if (activeBucket == null) return FindObjectOfType<Pendulum>();
         Pendulum p = activeBucket.GetComponent<Pendulum>();
         if (p == null) p = activeBucket.GetComponentInParent<Pendulum>();
         if (p == null) p = activeBucket.GetComponentInChildren<Pendulum>();
-        if (p == null) p = FindObjectOfType<Pendulum>(); // Absolute fallback
+        if (p == null) p = FindObjectOfType<Pendulum>(); 
         return p;
     }
 
@@ -32,7 +34,7 @@ public class FluidMasterUI : MonoBehaviour
         Rope r = activeBucket.GetComponent<Rope>();
         if (r == null) r = activeBucket.GetComponentInParent<Rope>();
         if (r == null) r = activeBucket.GetComponentInChildren<Rope>();
-        if (r == null) r = FindObjectOfType<Rope>(); // Absolute fallback
+        if (r == null) r = FindObjectOfType<Rope>(); 
         return r;
     }
 
@@ -42,6 +44,9 @@ public class FluidMasterUI : MonoBehaviour
         if (uiDocument == null) return;
         
         rootVisual = uiDocument.rootVisualElement;
+
+        initialConfigPanel = rootVisual.Q<VisualElement>("initial-config-panel");
+        mainSimulationPanel = rootVisual.Q<VisualElement>("main-simulation-panel");
 
         lblParticles = rootVisual.Q<Label>("lbl-particles");
         lblWeight = rootVisual.Q<Label>("lbl-weight");
@@ -55,9 +60,12 @@ public class FluidMasterUI : MonoBehaviour
         RegisterAllCallbacks(rootVisual);
         InitializeBucketList(rootVisual);
     }
-
+    
     void Update()
     {
+        if (mainSimulationPanel == null || mainSimulationPanel.style.display == DisplayStyle.None)
+            return;
+
         if (activeBucket != null)
         {
             if (lblParticles != null) lblParticles.text = $"PARTICLES: {activeBucket.currentParticleCount:N0}";
@@ -85,9 +93,18 @@ public class FluidMasterUI : MonoBehaviour
         }
     }
 
+    void Start()
+    {
+        if (activeBucket != null)
+        {
+            UpdateVisualsToMatchBucket(rootVisual, activeBucket);
+        }
+    }
+
     void InitializeBucketList(VisualElement root)
     {
         bucketList = root.Q<ScrollView>("bucket-list");
+        if (bucketList == null) return;
         bucketList.Clear();
         allBuckets = FindObjectsOfType<FluidSim>();
 
@@ -117,6 +134,23 @@ public class FluidMasterUI : MonoBehaviour
 
     void RegisterAllCallbacks(VisualElement root)
     {
+        var confirmBtn = root.Q<Button>("confirm-setup-btn");
+        if (confirmBtn != null)
+        {
+            confirmBtn.clicked += () => {
+                if (activeBucket != null)
+                {
+                    activeBucket.ApplySurfacePreset();
+                    activeBucket.ResetParticles(); 
+                }
+
+                if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.None;
+                if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.Flex;
+
+                UpdateVisualsToMatchBucket(root, activeBucket);
+            };
+        }
+
         var playBtn = root.Q<Button>("play-pause-btn");
         var resetBtn = root.Q<Button>("reset-btn");
 
@@ -159,6 +193,9 @@ public class FluidMasterUI : MonoBehaviour
                 
                 var r = GetRope();
                 if (r != null) r.ResetRope();
+
+                if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
+                if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
                 
                 UpdateVisualsToMatchBucket(root, activeBucket);
             };
@@ -168,9 +205,9 @@ public class FluidMasterUI : MonoBehaviour
         root.Q<Slider>("color-g")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.g = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
         root.Q<Slider>("color-b")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.b = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
         
-        root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { activeBucket.paintType = (FluidSim.PaintType)evt.newValue; activeBucket.ApplyPaintTypeSettings(); } });
-        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.surfaceType = (FluidSim.SurfaceType)evt.newValue; });
-
+        root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { activeBucket.paintType = (FluidSim.PaintType)evt.newValue; } });
+        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { activeBucket.surfaceType = (FluidSim.SurfaceType)evt.newValue; } });
+        
         root.Q<Slider>("canvas-rot-x")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.x = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
         root.Q<Slider>("canvas-rot-y")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.y = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
         root.Q<Slider>("canvas-rot-z")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.z = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
@@ -193,23 +230,33 @@ public class FluidMasterUI : MonoBehaviour
         root.Q<SliderInt>("rope-iterations")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.ConstraintIterations = evt.newValue; });
         root.Q<SliderInt>("rope-substeps")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.Substeps = evt.newValue; });
 
+        var sliderY = root.Q<Slider>("hole-y");
         root.Q<DropdownField>("hole-placement")?.RegisterValueChangedCallback(evt => {
             if (activeBucket == null) return;
             if (evt.newValue == "Bottom") {
                 activeBucket.holeOrientation = 0;
-                activeBucket.holePosition.y = -1f;
+                activeBucket.holePosition = new Vector3(0f, -1f, 0f);
                 topBottomControls.style.display = DisplayStyle.Flex;
                 sideControls.style.display = DisplayStyle.None;
+                root.Q<Slider>("hole-x")?.SetValueWithoutNotify(0f);
+                root.Q<Slider>("hole-z")?.SetValueWithoutNotify(0f);
             } else if (evt.newValue == "Side") {
                 activeBucket.holeOrientation = 1;
+                activeBucket.holePosition = new Vector3(0.5f, 0f, 0f);
                 topBottomControls.style.display = DisplayStyle.None;
                 sideControls.style.display = DisplayStyle.Flex;
+                if (sliderY != null) {
+                    sliderY.lowValue = -1f;
+                    sliderY.highValue = 1f;
+                    sliderY.SetValueWithoutNotify(0f);
+                }
+                root.Q<DropdownField>("hole-side-x")?.SetValueWithoutNotify("Right (0.5)");
             }
         });
 
         root.Q<Slider>("hole-x")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.x = evt.newValue; });
         root.Q<Slider>("hole-z")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.z = evt.newValue; });
-        root.Q<Slider>("hole-y")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.y = -evt.newValue; });
+        root.Q<Slider>("hole-y")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.y = evt.newValue; });
         root.Q<DropdownField>("hole-side-x")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.x = evt.newValue.StartsWith("Left") ? -0.5f : 0.5f; });
 
         root.Q<Slider>("hole-size")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.holeSize = evt.newValue; });
@@ -250,6 +297,9 @@ public class FluidMasterUI : MonoBehaviour
         if (bucket.canvasCollision != null)
         {
             Vector3 canvasRot = bucket.canvasCollision.transform.localEulerAngles;
+            canvasRot.x = -30f; 
+            bucket.canvasCollision.transform.localEulerAngles = canvasRot;
+            
             root.Q<Slider>("canvas-rot-x")?.SetValueWithoutNotify(canvasRot.x);
             root.Q<Slider>("canvas-rot-y")?.SetValueWithoutNotify(canvasRot.y);
             root.Q<Slider>("canvas-rot-z")?.SetValueWithoutNotify(canvasRot.z);
@@ -308,8 +358,15 @@ public class FluidMasterUI : MonoBehaviour
             holePlacement?.SetValueWithoutNotify("Side");
             topBottomControls.style.display = DisplayStyle.None;
             sideControls.style.display = DisplayStyle.Flex;
+            
+            var sliderY = root.Q<Slider>("hole-y");
+            if (sliderY != null)
+            {
+                sliderY.lowValue = -1f;
+                sliderY.highValue = 1f;
+                sliderY.SetValueWithoutNotify(bucket.holePosition.y);
+            }
             root.Q<DropdownField>("hole-side-x")?.SetValueWithoutNotify(bucket.holePosition.x < 0 ? "Left (-0.5)" : "Right (0.5)");
-            root.Q<Slider>("hole-y")?.SetValueWithoutNotify(-bucket.holePosition.y);
         } 
         else 
         {

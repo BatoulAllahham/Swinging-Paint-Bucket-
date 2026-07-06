@@ -537,13 +537,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e1093ff14e70c0f4895418961e178ecc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Rope
-  type: 0
+  type: 1
   ropeLength: 10
   totalRopeMass: 0.5
-  isSimulationRunning: 0
+  isSimulating: 0
   hangPoint: {fileID: 1422597289}
   bucket: {fileID: 1032810835}
-  bucketTopOffset: {x: 0, y: -1, z: 0}
+  bucketTopOffset: {x: 0, y: 1, z: 0}
   numSegments: 30
   ropeRadius: 0.05
   radialSegments: 8
@@ -1496,15 +1496,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 336de48b9da93bf4999dd2d5f037fe32, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Pendulum
+  isSimulating: 0
   thetaAngularVelocity: 30
   phiAngularVelocity: 30
   thetaDegree: 60
   phiDegree: 60
+  swingingRate: 0
   gravity: 9.81
   airDensity: 1.25
   dragCoefficient: 0.01
   mass: 1
-  isSimulating: 0
   weightManager: {fileID: 942389057}
   hangPoint: {fileID: 1422597289}
   rope: {fileID: 552335637}
@@ -2169,13 +2170,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1512319531}
   serializedVersion: 2
-  m_LocalRotation: {x: -0.258819, y: 0, z: 0, w: 0.9659259}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 12.7, z: 0}
   m_LocalScale: {x: 27.546822, y: 0.40675086, z: 38.827}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 202937198}
-  m_LocalEulerAnglesHint: {x: -30, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!23 &1512319534
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -2734,7 +2735,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: holePosition.y
-      value: 1
+      value: -1
       objectReference: {fileID: 0}
     - target: {fileID: 3811123279599950350, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: bucketTransform
@@ -2982,11 +2983,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8160605817700658997, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.9659258
       objectReference: {fileID: 0}
     - target: {fileID: 8160605817700658997, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: 0.2588191
       objectReference: {fileID: 0}
     - target: {fileID: 8160605817700658997, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_LocalRotation.y
@@ -2998,7 +2999,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8160605817700658997, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
+      value: 30
       objectReference: {fileID: 0}
     - target: {fileID: 8160605817700658997, guid: 5a8266a0d98f14aa78510d5ea5be2746, type: 3}
       propertyPath: m_ConstrainProportionsScale
@@ -3032,7 +3033,7 @@ MonoBehaviour:
   paintTextureResolution: 512
   canvasMaterial: {fileID: 2100000, guid: 1553aef6b5174064f80c26ddffd5aa1c, type: 2}
   paintColour: {r: 0.96862745, g: 0.14117648, b: 0.105882354, a: 1}
-  paintType: 2
+  paintType: 0
   normalTimeScale: 1
   maxTimestepFPS: 60
   iterationsPerFrame: 4
@@ -3044,10 +3045,10 @@ MonoBehaviour:
   springStiffness: 1000
   plasticityRate: 0.3
   yieldRatio: 0.1
-  viscosityStrength: 0.0004
+  viscosityStrength: 0
   weightPerParticle: 0.0001
   collisionDamping: 0.95
-  holePosition: {x: 0, y: 1, z: 0}
+  holePosition: {x: 0, y: -1, z: 0}
   holeOrientation: 0
   holeSize: 0
   surfaceType: 0
@@ -3063,6 +3064,9 @@ MonoBehaviour:
   compute: {fileID: 7200000, guid: 9443696acfd0ebe4fb503b56d952256c, type: 3}
   spawner: {fileID: 852984696}
   canvasCollision: {fileID: 202937199}
+  bounceOffset: 1
+  roughnessOffset: 0.02
+  absorptionOffset: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
