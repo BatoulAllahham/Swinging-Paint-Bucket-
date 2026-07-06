@@ -11,7 +11,7 @@ namespace PaintSim.Fluid.Simulation
 	public class FluidSim : MonoBehaviour
 	{
 		public event Action<FluidSim> SimulationInitCompleted;
-	
+
 		// UV
 		[Header("Paint Texture")]
 		public int paintTextureResolution = 512;
@@ -26,11 +26,12 @@ namespace PaintSim.Fluid.Simulation
 		// STYLE: per-pixel wetness (R) and bump strength (G) baked at deposit time
 		RenderTexture paintStyleTexture;
 		static RenderTexture sharedPaintStyleTexture;
+
 		// PAINT TYPE
 		public enum PaintType { Watercolor, Acrylic, WallPaint }
 		public PaintType paintType = PaintType.Watercolor;
 
-		[Header("Time Step")] 
+		[Header("Time Step")]
 		public float normalTimeScale = 1;
 		public float maxTimestepFPS = 60; // if time-step dips lower than this fps, simulation will run slower (set to 0 to disable)
 		public int iterationsPerFrame = 3;
@@ -59,7 +60,7 @@ namespace PaintSim.Fluid.Simulation
 		[Range(0.0f, 0.5f)]
 		public float holeSize = 0.1f;
 
-				public enum SurfaceType
+		public enum SurfaceType
 		{
 			Glass,
 			Plastic,
@@ -69,8 +70,8 @@ namespace PaintSim.Fluid.Simulation
 		}
 
 		public SurfaceType surfaceType;
-		
-	    [Header("Environmental Settings")]
+
+		[Header("Environmental Settings")]
 		[Range(-10f, 60f)] public float temperature = 25f;
 		[Range(0f, 1f)] public float humidity = 0.5f;
 		[Range(0f, 0.1f)] public float evaporationRate = 0.01f;
@@ -90,14 +91,14 @@ namespace PaintSim.Fluid.Simulation
 		public float currentFlowSpeed;
 		private ComputeBuffer flowResultBuffer;
 		private int[] flowData = new int[4];
-		[Header("References")] 
+		[Header("References")]
 		public Transform bucketTransform;
 		public ComputeShader compute;
 		public Spawner3D spawner;
 		public CanvasCollisionData canvasCollision;
 		public Vector3 Scale => transform.localScale;
 
-	
+
 		// Buffers
 		public GraphicsBuffer positionBuffer { get; private set; }
 		public ComputeBuffer velocityBuffer { get; private set; }
@@ -148,7 +149,7 @@ namespace PaintSim.Fluid.Simulation
 		[NonSerialized] PaintType _lastAppliedPaintType = (PaintType)(-1);
 		[NonSerialized] SurfaceType _lastAppliedSurfaceType = (SurfaceType)(-1);
 
-void OnValidate()
+		void OnValidate()
 		{
 			if (paintType != _lastAppliedPaintType)
 			{
@@ -167,7 +168,7 @@ void OnValidate()
 			ApplyPaintTypeSettings();
 		}
 
-		
+
 		public void ApplyPaintTypeSettings()
 		{
 			switch (paintType)
@@ -200,40 +201,40 @@ void OnValidate()
 		// OnValidate) can apply the preset immediately instead of only on the next Editor edit.
 		public void ApplySurfacePreset()
 		{
-            switch (surfaceType)
-            {
-                case SurfaceType.Glass:
-                    bounceOffset = 1.0f;
-                    roughnessOffset = 0.02f;
-                    absorptionOffset = 0.0f;
-                    break;
+			switch (surfaceType)
+			{
+				case SurfaceType.Glass:
+					bounceOffset = 1.0f;
+					roughnessOffset = 0.02f;
+					absorptionOffset = 0.0f;
+					break;
 
-                case SurfaceType.Wood:
-                    bounceOffset = 0.55f;
-                    roughnessOffset = 0.45f;
-                    absorptionOffset = 0.1f;
-                    break;
+				case SurfaceType.Wood:
+					bounceOffset = 0.55f;
+					roughnessOffset = 0.45f;
+					absorptionOffset = 0.1f;
+					break;
 
-                case SurfaceType.Sponge:
-                    bounceOffset = 0.15f;
-                    roughnessOffset = 0.9f;
-                    absorptionOffset = 1.0f;
-                    break;
+				case SurfaceType.Sponge:
+					bounceOffset = 0.15f;
+					roughnessOffset = 0.9f;
+					absorptionOffset = 1.0f;
+					break;
 
-                case SurfaceType.Plastic:
-                    bounceOffset = 0.95f;
-                    roughnessOffset = 0.15f;
-                    absorptionOffset = 0.0f;
-                    break;
+				case SurfaceType.Plastic:
+					bounceOffset = 0.95f;
+					roughnessOffset = 0.15f;
+					absorptionOffset = 0.0f;
+					break;
 
-                case SurfaceType.Canvas:
-                    bounceOffset = 0.35f;
-                    roughnessOffset = 0.65f;
-                    absorptionOffset = 0.45f;
-                    break;
-            }
-            _lastAppliedSurfaceType = surfaceType;
-        }
+				case SurfaceType.Canvas:
+					bounceOffset = 0.35f;
+					roughnessOffset = 0.65f;
+					absorptionOffset = 0.45f;
+					break;
+			}
+			_lastAppliedSurfaceType = surfaceType;
+		}
 
 		void Start()
 		{
@@ -397,7 +398,7 @@ void OnValidate()
 			// Manually bind GraphicsBuffer for the shader grapgh
 			compute.SetBuffer(updatePositionsKernel, "Positions", positionBuffer);
 
-	
+
 			int updatePosKernel = compute.FindKernel("UpdatePositions");
 			compute.SetBuffer(updatePosKernel, "BucketParticleCount", bucketCountBuffer);
 
@@ -406,7 +407,7 @@ void OnValidate()
 
 
 			compute.SetInt("numParticles", positionBuffer.count);
-		
+
 			UpdateSmoothingConstants();
 
 			// UV
@@ -471,6 +472,7 @@ void OnValidate()
 			compute.SetTexture(updatePositionsKernel, "PaintStyleTexture", paintStyleTexture);
 			if (canvasMaterial != null)
 				canvasMaterial.SetTexture("_StyleTex", paintStyleTexture);
+
 		}
 
 		void Update()
@@ -489,7 +491,7 @@ void OnValidate()
 				pauseNextFrame = false;
 			}
 
-		
+
 			Debug.Log($"Canvas normal: {canvasCollision.canvasTransform.up}, flatness: {Mathf.Abs(Vector3.Dot(canvasCollision.canvasTransform.up, Vector3.up))}");
 		}
 		// BANA
@@ -523,7 +525,7 @@ void OnValidate()
 			}
 			bucketCountBuffer.GetData(countResultData);
 			currentParticleCount = countResultData[0];
-			
+
 			currentBucketWeight = currentParticleCount * weightPerParticle;
 
 			flowResultBuffer.GetData(flowData);
@@ -537,10 +539,10 @@ void OnValidate()
 				currentFlowSpeed = 0f;
 			}
 
-		
+
 		}
 
-	
+
 
 		void RunSimulationStep()
 		{
@@ -581,21 +583,21 @@ void OnValidate()
 		}
 
 
-        [Header("Surface Tuning (Overrides Preset)")]
-        [Range(0f, 1f)] public float bounceOffset = 0.5f;
-        [Range(0f, 1f)] public float roughnessOffset = 0.5f;
-        [Range(0f, 1f)] public float absorptionOffset = 0.5f;
+		[Header("Surface Tuning (Overrides Preset)")]
+		[Range(0f, 1f)] public float bounceOffset = 0.5f;
+		[Range(0f, 1f)] public float roughnessOffset = 0.5f;
+		[Range(0f, 1f)] public float absorptionOffset = 0.5f;
 
-        Vector3 GetSurfaceParams()
-        {
-            return new Vector3(
-                bounceOffset,
-                roughnessOffset,
-                absorptionOffset
-            );
-        }
+		Vector3 GetSurfaceParams()
+		{
+			return new Vector3(
+				bounceOffset,
+				roughnessOffset,
+				absorptionOffset
+			);
+		}
 
- 
+
 
 		void SetPaintTypeParams()
 		{
@@ -618,7 +620,7 @@ void OnValidate()
 
 			// flowRate: exponential decay — watercolor(0)→1.0, wallpaint(0.5)→0.05, beyond→<0.05
 			// OLD: hardcoded watercolor=1.0, acrylic=0.3, wallpaint=0.05
-			float flowRate = Mathf.Pow(0.05f, viscNorm * 2.0f);
+			float flowRate = Mathf.Pow(0.2f, viscNorm * 2.0f);
 			compute.SetFloat("paintFlowRate", flowRate);
 
 			// Bump baked per-pixel into PaintStyleTexture at deposit time (wetness set above, binary).
@@ -758,6 +760,26 @@ void OnValidate()
 			if (spatialHash != null) spatialHash.Release();
 		}
 
+		void OnDrawGizmos()
+		{
+			if (bucketTransform == null) return;
+
+			// Local-space matrix so the sphere reflects the bucket's own rotation/scale,
+			// matching how the compute shader tests holePosition against posLocal.
+			Gizmos.matrix = bucketTransform.localToWorldMatrix;
+			Gizmos.color = new Color(1f, 0.3f, 0f, 0.8f);
+			Gizmos.DrawWireSphere(holePosition, Mathf.Max(holeSize, 0.01f));
+
+			Vector3 drainDir = holeOrientation == 0
+				? Vector3.down
+				: new Vector3(holePosition.x, 0f, holePosition.z).normalized;
+			Gizmos.DrawLine(holePosition, holePosition + drainDir * 0.3f);
+
+			// World-space marker: line up this dot between two buckets to make their holes drain to the same spot.
+			Gizmos.matrix = Matrix4x4.identity;
+			Gizmos.color = Color.yellow;
+			Gizmos.DrawSphere(bucketTransform.TransformPoint(holePosition), 0.02f);
+		}
 
 
 	}

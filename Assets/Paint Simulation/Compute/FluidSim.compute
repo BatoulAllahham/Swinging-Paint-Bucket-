@@ -741,19 +741,34 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         bool canSlide = (flatness < 0.995);
         if (canSlide)
         {
-            float3 gravDir = float3(0, -gravity, 0);
-            float3 slideForce = gravDir - n * dot(gravDir, n);
-            float slideStrength = length(slideForce);
-            if (slideStrength > 0.0001)
-                slideForce /= slideStrength;
+            // OUR VERSION (commented for A/B comparison): acceleration-based, with a viscosity/
+            // absorption-aware max-speed clamp, using the actual gravity magnitude.
+            // float3 gravDir = float3(0, -gravity, 0);
+            // float3 slideForce = gravDir - n * dot(gravDir, n);
+            // float slideStrength = length(slideForce);
+            // if (slideStrength > 0.0001)
+            //     slideForce /= slideStrength;
+            // float slideAccel = paintFlowRate * (1.0 - effectiveAbsorb * 0.8);
+            // vel += slideForce * slideStrength * slideAccel * deltaTime;
+            // float maxSpeed = paintFlowRate / (1.0 + viscousDrag * 4.0 + effectiveAbsorb * 3.0) * 0.4;
+            // float spd = length(vel);
+            // if (spd > maxSpeed)
+            //     vel = vel / spd * maxSpeed;
 
-            float slideAccel = paintFlowRate * (1.0 - effectiveAbsorb * 0.8);
-            vel += slideForce * slideStrength * slideAccel * deltaTime;
+            // GOODI EDITS START 
+            float3 gravityDir = float3(0, -1, 0);
 
-            float maxSpeed = paintFlowRate / (1.0 + viscousDrag * 4.0 + effectiveAbsorb * 3.0) * 0.4;
-            float spd = length(vel);
-            if (spd > maxSpeed)
-                vel = vel / spd * maxSpeed;
+            float3 slideDir = gravityDir - n * dot(gravityDir, n);
+
+            float lenDir = length(slideDir);
+
+            if (lenDir > 0.00001)
+            {
+                slideDir /= lenDir;
+
+                vel = slideDir * paintFlowRate;
+            }
+            // GOODI EDITS END
         }
         else
             vel = float3(0, 0, 0);
@@ -795,6 +810,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                     if (alpha < 0.001)
                         continue;
 
+                    // GOODI EDITS START
                     float4 accum = PaintAccumTexture[p];
                     float storedMassT   = accum.a;
                     bool incomingWaterT = paintMixRate > 0.5;
@@ -806,10 +822,20 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
                     float3 color = clamp(avgPig * avgPig, 0.0, 1.0);
                     float oldTrailThick = PaintTexture[p].a;
-                    // float trailVisRate = (effectiveAbsorb < 0.05)
-                    //     ? max(paintLayerThickness * 0.8, 0.08)
-                    //     : max(paintLayerThickness * 0.5, 0.02);
-                    PaintTexture[p] = float4(color, min(oldTrailThick + alpha * paintLayerThickness * 0.5, 1.0));
+                    float trailVisRate = (effectiveAbsorb < 0.05)
+                    ? max(paintLayerThickness * 0.8, 0.08)
+                        : max(paintLayerThickness * 0.5, 0.02);
+                    float old = PaintTexture[p].a;
+
+                    float shape = alpha * paintLayerThickness;
+                    float flow = trailAlpha * 0.2;
+
+                    float thickness = old * 0.96 + flow;
+                    thickness = max(thickness, shape * 0.6);
+                    thickness = saturate(thickness);
+
+                    PaintTexture[p] = float4(color, thickness);
+                    // GOODI EDITS END
                 }
         }
         else
@@ -873,11 +899,26 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         else
             vN = -vN * bounce;
 
-        float3 gravityDir = float3(0, -gravity, 0);
+        // OUR VERSION (commented for A/B comparison): uses the actual gravity magnitude, 0.0001 threshold,
+        // and leaves slideDir un-zeroed below threshold.
+        // float3 gravityDir = float3(0, -gravity, 0);
+        // float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
+        // float slideStrength = length(slideDir);
+        // if (slideStrength > 0.0001)
+        //     slideDir /= slideStrength;
+
+        // GOODI EDITS START 
+        float3 gravityDir = float3(0, -1, 0);
+
         float3 slideDir = gravityDir - normal * dot(gravityDir, normal);
+
         float slideStrength = length(slideDir);
-        if (slideStrength > 0.0001)
+
+        if (slideStrength > 0.00001)
             slideDir /= slideStrength;
+        else
+            slideDir = float3(0, 0, 0);
+        // GOODI EDITS END
 
         float slip = (1.0 - rough) * pow((1.0 - absorb), 4.0);
 
@@ -952,18 +993,25 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         // // Evaporation: fades paint alpha slightly on contact
         // float evapFade = evaporationRate * (1.0 - humidity) * deltaTime;
 
+        // OUR VERSION (commented for A/B comparison): scales the edge-slide speed by distance from
+        // canvas center (weaker near the middle, stronger toward the edges).
+        // if (absorb > 0.8)
+        // {
+        //     float3 edgeFlow = slideDir;
+        //     float2 localOffset = hitUV - float2(0.5, 0.5);
+        //     float edgeFactor = saturate(length(localOffset) * 2.0);
+        //     vel = edgeFlow * paintFlowRate * edgeFactor * 0.06;
+        //     pos = targetPos;
+        // }
+
+        // GOODI EDITS START 
         if (absorb > 0.8)
         {
-            float3 edgeFlow = slideDir;
+            vel = slideDir * paintFlowRate * 0.06;
 
-            float2 localOffset = hitUV - float2(0.5, 0.5);
-            float edgeFactor = saturate(length(localOffset) * 2.0);
-
-            vel = edgeFlow * paintFlowRate * edgeFactor * 0.06;
-
-    // keep particle on the actual painted spot
             pos = targetPos;
         }
+        // GOODI EDITS END
 
         int2 coord = int2(
     (int) (stableUV.x * paintTextureSize),
@@ -986,8 +1034,12 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         float surfaceSize =
     1.0 + (absorb * 0.6) - (rough * 0.4);
 
-        float motionSize =
-    1.0 + saturate(length(vT) * 2.5) * 0.4;
+        // GOODI EDITS START -- her version doesn't scale splat size with particle speed; ours did.
+        // Kept here (commented) so we can flip back to compare while debugging trail mixing.
+        // float motionSize =
+        //     1.0 + saturate(length(vT) * 2.5) * 0.4;
+        float motionSize = 1.0;
+        // GOODI EDITS END
 
         float finalSize =
     baseSize * paintSize * surfaceSize * motionSize * spreadScale;
@@ -1053,13 +1105,35 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 {
                     float2 dir2 = float2(0, 0);
 
+                    // GOODI EDITS START 
                     if (woodMask < 0.2)
                     {
-                        if (motionSpeed > 0.0001)
-                            dir2 = motionForPaint.xy / motionSpeed;
+                        // if (motionSpeed > 0.0001)
+                        //     dir2 = motionForPaint.xy / motionSpeed;
+                        // streak = saturate(motionSpeed * 4.0) * 0.25;
 
+                        float2 slideDirUV = float2(0, 0);
+
+                        if (motionSpeed > 0.0001)
+                        {
+                            slideDirUV.x = dot(slideDir, canvasRight);
+                            slideDirUV.y = dot(slideDir, canvasUp);
+
+                            if (length(slideDirUV) > 0.0001)
+                                slideDirUV = normalize(slideDirUV);
+
+                            dir2 = slideDirUV;
+                        }
+                        slideDirUV.x = dot(slideDir, canvasRight);
+                        slideDirUV.y = dot(slideDir, canvasUp);
+
+                        if (length(slideDirUV) > 0.0001)
+                            slideDirUV = normalize(slideDirUV);
+
+                        dir2 = slideDirUV;
                         streak = saturate(motionSpeed * 4.0) * 0.25;
                     }
+                    // GOODI EDITS END
                     else
                     {
                         float burst = motionSpeed * 0.6;
@@ -1096,10 +1170,6 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 
 // تمدد البقعة حسب الميل
 
-                float stretch = 1.0; // إسقاط النقطة على اتجاه السيلان
-                float alongFlow = dot(float2(x, y), flowDir);
-                float acrossFlow = dot(float2(x, y), float2(-flowDir.y, flowDir.x));
-
 // دائرة إذا أفقي، بيضاوي إذا مائل
                 float distF = length(float2(x, y)) / radius;
                 float alpha = saturate(1.0 - distF);
@@ -1112,31 +1182,23 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 // alpha = max(0.0, alpha - evapFade);
 
 
-                //MIXING 
+                //MIXING
                 float depositedMass = alpha;
+
+                // GOODI EDITS START 
                 float4 accum = PaintAccumTexture[p];
                 float storedMass = accum.a;
                 float3 oldPigment = accum.rgb;
-                
-                // BANA
-                // paintMixRate is strictly 1.0 (watercolor, viscosity==0) or 0.0 (any viscosity>0).
-                // paintWetnessGloss is strictly 0.4 (watercolor) or 0.0 (viscous).
-                // storedWetness==0.4 means the last depositor was watercolor; 0.0 means viscous.
                 float storedWetness = PaintStyleTexture[p].r;
-                // Mixing only if BOTH incoming and stored are watercolor.
                 bool incomingIsWater = paintMixRate > 0.5;
                 bool storedIsWater   = storedWetness > 0.2;
                 bool doMix           = incomingIsWater && storedIsWater;
-
                 float effectiveOldMass = doMix ? storedMass : 0.0;
-
                 float newEffectiveMass = effectiveOldMass + depositedMass;
                 float3 avgPigment = (effectiveOldMass * oldPigment + depositedMass * newPigment)
                           / max(newEffectiveMass, 0.001);
-
                 float newStoredMass = storedMass + depositedMass;
                 PaintAccumTexture[p] = float4(avgPigment, newStoredMass);
-
                 float spongeMask = saturate((absorb - 0.6) / 0.3);
                 float3 color = avgPigment * avgPigment;
                 float luminance = dot(color, float3(0.299, 0.587, 0.114));
@@ -1144,26 +1206,16 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 float3 displayColor = lerp(color, spongeColor, spongeMask);
                 displayColor = clamp(displayColor, 0.0, 1.0);
                 displayColor *= (1.0 - absorb * 0.03);
-                // THICKNESS: accumulate height in alpha; absorbed surfaces build less height
                 float oldDepThick = PaintTexture[p].a;
                 float thickDeposit = depositedMass * paintLayerThickness * (1.0 - effectiveAbsorb * 0.8);
-                // Floor: ensures every pixel inside the splat shows at full hasPaint regardless of absorption.
-                // Without this, sponge+watercolor edge pixels get thickDeposit~0.000012 → hasPaint=0.36 → faded ring.
                 thickDeposit = max(thickDeposit, depositedMass * 0.01);
-                // OLD: PaintTexture[p] = float4(displayColor, 1.0);
                 PaintTexture[p] = float4(displayColor, min(oldDepThick + thickDeposit, 1.0));
-                
-                // BANA
-                // Style texture: R = paint-type tag (0.4=watercolor, 0.0=viscous), G = bump strength.
-                // The type tag is ALWAYS overwritten by whoever deposits — never blended.
-                // Blending the tag was the source of trailing mix: a small viscous deposit on a
-                // large watercolor mass would leave R still >0.2, making the next watercolor
-                // treat the pixel as watercolor-compatible and blend with the viscous color.
                 float2 oldStyle = PaintStyleTexture[p];
                 float oldStyleMass = storedMass;
                 float newStyleMass = oldStyleMass + depositedMass;
                 float newBump = (oldStyleMass * oldStyle.g + depositedMass * paintBumpStrength) / max(newStyleMass, 0.001);
-                PaintStyleTexture[p] = float2(paintWetnessGloss, newBump); // R always overwritten
+                PaintStyleTexture[p] = float2(paintWetnessGloss, newBump);
+                // GOODI EDITS END
             }
     }
     if (!didHit && ParticleStates[id.x] != 2)
@@ -1201,5 +1253,5 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     InterlockedAdd(FlowResultBuffer[2], (int)(vel.y * 1000.0f));
     InterlockedAdd(FlowResultBuffer[3], (int)(vel.z * 1000.0f));
 }
-    
+
 }
