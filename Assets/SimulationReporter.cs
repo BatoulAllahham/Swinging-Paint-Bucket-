@@ -76,7 +76,7 @@ public class SimulationReporter : MonoBehaviour
             UnityEngine.Debug.Log($"Report saved to: {path}");
 
          
-            OpenFolderAndSelectFile(path);
+         //   OpenFolderAndSelectFile(path);
         }
         catch (System.Exception e)
         {
