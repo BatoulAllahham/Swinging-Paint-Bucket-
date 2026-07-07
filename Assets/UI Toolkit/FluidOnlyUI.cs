@@ -1,16 +1,15 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 using PaintSim.Fluid.Simulation;
-
-public class FluidMasterUI : MonoBehaviour
+using UnityEngine.EventSystems; // Add this
+public class FluidOnlyMasterUI : MonoBehaviour
 {
-public SimulationReporter reporter;
     private UIDocument uiDocument;
-    private FluidSim[] allBuckets;
-    private FluidSim activeBucket;
+    private FluidOnlySim[] allBuckets;
+    private FluidOnlySim activeBucket;
     private ScrollView bucketList;
     private VisualElement rootVisual;
-
+    public Transform targetTransform;
     private VisualElement initialConfigPanel;
     private VisualElement mainSimulationPanel;
 
@@ -38,12 +37,23 @@ public SimulationReporter reporter;
         if (r == null) r = FindObjectOfType<Rope>(); 
         return r;
     }
+    void UpdateRotation(string axis, float value)
+    {
+        if (targetTransform == null) return;
+        
+        Vector3 rot = targetTransform.localEulerAngles;
+        if (axis == "x") rot.x = value;
+        if (axis == "y") rot.y = value;
+        if (axis == "z") rot.z = value;
+        
+        targetTransform.localEulerAngles = rot;
+    }
 
     void OnEnable()
     {
         uiDocument = GetComponent<UIDocument>();
         if (uiDocument == null) return;
-        
+        uiDocument.rootVisualElement.pickingMode = PickingMode.Position;
         
         rootVisual = uiDocument.rootVisualElement;
 
@@ -61,21 +71,14 @@ public SimulationReporter reporter;
 
         RegisterAllCallbacks(rootVisual);
         InitializeBucketList(rootVisual);
-        var exportBtn = rootVisual.Q<Button>("export-report-btn");
-if (exportBtn != null)
-{
-    exportBtn.clicked += () => {
-    
-        if (reporter == null) reporter = gameObject.AddComponent<SimulationReporter>();
         
-
-        reporter.ExportReport(allBuckets, GetPendulum(), GetRope());
-    };
-}
     }
     
     void Update()
     {
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) {
+        return; 
+    }
         if (mainSimulationPanel == null || mainSimulationPanel.style.display == DisplayStyle.None)
             return;
 
@@ -120,7 +123,7 @@ if (exportBtn != null)
         bucketList = root.Q<ScrollView>("bucket-list");
         if (bucketList == null) return;
         bucketList.Clear();
-        allBuckets = FindObjectsOfType<FluidSim>();
+        allBuckets = FindObjectsOfType<FluidOnlySim>();
 
         foreach (var bucket in allBuckets)
         {
@@ -133,7 +136,7 @@ if (exportBtn != null)
         if (allBuckets.Length > 0) SelectBucket(allBuckets[0], (Button)bucketList.ElementAt(0), root);
     }
 
-    void SelectBucket(FluidSim bucket, Button activeBtn, VisualElement root)
+    void SelectBucket(FluidOnlySim bucket, Button activeBtn, VisualElement root)
     {
         activeBucket = bucket;
         foreach (var child in bucketList.Children()) child.RemoveFromClassList("bucket-btn-active");
@@ -154,7 +157,7 @@ private void ClearCanvasTextures()
     ClearSharedTexture("sharedPaintAccumTexture");
     ClearSharedTexture("sharedPaintStyleTexture");
 
-    if (allBuckets != null)
+  if (allBuckets != null)
     {
         foreach (var bucket in allBuckets)
         {
@@ -167,7 +170,7 @@ private void ClearCanvasTextures()
 
 private void ClearSharedTexture(string fieldName)
 {
-    var field = typeof(FluidSim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+    var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
     var rt = field?.GetValue(null) as RenderTexture;
     if (rt == null) return;
 
@@ -175,10 +178,10 @@ private void ClearSharedTexture(string fieldName)
     GL.Clear(false, true, Color.clear);
 }
 
-private void ClearInstanceTexture(FluidSim sim, string fieldName)
+private void ClearInstanceTexture(FluidOnlySim sim, string fieldName)
 {
     if (sim == null) return;
-    var field = typeof(FluidSim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+    var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
     var rt = field?.GetValue(sim) as RenderTexture;
     if (rt == null) return;
 
@@ -272,7 +275,7 @@ if (resetBtn != null)
         var r = GetRope();
         if (r != null) r.ResetRope();
 
-
+      
         if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
         if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
         
@@ -286,13 +289,13 @@ if (resetBtn != null)
         
         root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => {
              if (activeBucket != null) { 
-                activeBucket.paintType = (FluidSim.PaintType)evt.newValue;
+                activeBucket.paintType = (FluidOnlySim.PaintType)evt.newValue;
                 activeBucket.ApplyPaintTypeSettings();
                  } });
         root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => 
         { if (activeBucket != null) 
     { 
-        activeBucket.surfaceType = (FluidSim.SurfaceType)evt.newValue; 
+        activeBucket.surfaceType = (FluidOnlySim.SurfaceType)evt.newValue; 
         activeBucket.ApplySurfacePreset(); 
     } 
 });
@@ -368,9 +371,15 @@ if (resetBtn != null)
         root.Q<Button>("back-to-menu-btn")?.RegisterCallback<ClickEvent>(evt => {
     UnityEngine.SceneManagement.SceneManager.LoadScene("Main Menu");
 });
+
+root.Q<Slider>("rot-x")?.RegisterValueChangedCallback(e => UpdateRotation("x", e.newValue));
+        root.Q<Slider>("rot-y")?.RegisterValueChangedCallback(e => UpdateRotation("y", e.newValue));
+        root.Q<Slider>("rot-z")?.RegisterValueChangedCallback(e => UpdateRotation("z", e.newValue));
     }
 
-    void UpdateVisualsToMatchBucket(VisualElement root, FluidSim bucket)
+
+
+    void UpdateVisualsToMatchBucket(VisualElement root, FluidOnlySim bucket)
     {
         if (bucket == null) return;
         

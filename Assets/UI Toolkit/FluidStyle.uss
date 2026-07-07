@@ -17,6 +17,7 @@
 
 /* --- THE LEFT PANEL --- */
 .app-wrapper {
+    pointer-events: auto;
     position: absolute; 
     left: 0; 
     top: 0; 

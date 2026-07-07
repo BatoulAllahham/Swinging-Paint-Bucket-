@@ -206,16 +206,23 @@ void ResolveCollisions(uint particleID, inout float3 pos, inout float3 vel, floa
     }
 
     // Cylinder Wall Collision
-    if (horizontalDist >= bucketRadius)
+  if (horizontalDist >= bucketRadius)
     {
+        // Push particle back inside
         posLocal.xz = normalize(posLocal.xz) * bucketRadius;
         float2 wallNormal = normalize(posLocal.xz);
-        float dotVel = dot(velocityLocal.xz, wallNormal);
         
-        if (dotVel > 0)
+        // Separate velocity into Normal (pushing into wall) and Tangent (sliding along wall)
+        float vNormal = dot(velocityLocal.xz, wallNormal);
+        float2 vTangent = velocityLocal.xz - (vNormal * wallNormal);
+        
+        if (vNormal > 0)
         {
-            velocityLocal.xz -= (1.0 + collisionDamping) * dotVel * wallNormal;
+            // Bounce and dampen the speed going into the wall
+            vNormal = -vNormal * collisionDamping; 
         }
+        vTangent *= collisionDamping; 
+        velocityLocal.xz = (vNormal * wallNormal) + vTangent;
     }
 
     // Ceiling Collision
