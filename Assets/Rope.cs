@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class Rope : MonoBehaviour
 {
-    public enum RopeType { Metal = 0, Normal = 1, Elastic = 2, Wooden = 3 }
+    public enum RopeType { Metal = 0, Normal = 1, Wooden = 2 }
     public RopeType type = RopeType.Metal;
 
     public float ropeLength = 8.0f;
@@ -14,12 +14,17 @@ public class Rope : MonoBehaviour
 
 
     public bool isSimulating = false;
-    
+
     [Header("References")]
     [SerializeField] Transform hangPoint;
     [SerializeField] Transform bucket;
-    [SerializeField] private Vector3 bucketTopOffset = new Vector3(0f, -1.0f, 0f);
 
+    private Pendulum pendulum;
+
+
+    [SerializeField] private Vector3 bucketTopOffset = new Vector3(0f, -1.0f, 0f);
+    // in Rope.cs, near the other properties
+    public Vector3 BucketTopOffset => bucketTopOffset;
 
     [Header("Rope Settings")]
     [SerializeField] public int numSegments = 30;
@@ -49,15 +54,13 @@ public class Rope : MonoBehaviour
 
 
     private static readonly (float stiffness, float damping, int iterations)[] Presets = new[]
-  {
-        (1.0f,    0.999f, 80),   // metal
-        (1.0f,    0.995f, 80),   // wooden
-        (0.90f,   0.998f, 75),   // normal
-        (0.70f,   0.99f,  30)    //elastic
-    };
 
-    //iteration 1->100, damping 0.9->1, stiffness 0.01->1.0, 
-    public RopeType Type { get => type; set => type = value; }
+    {(1.0f,   0.999f, 80),   // Metal   (unused, bypasses sim)
+     (0.75f,  0.95f, 75), // Normal  - near-rigid, minimal sag
+     (1.0f,   0.995f, 80)};
+
+//iteration 1->100, damping 0.9->1, stiffness 0.01->1.0, 
+public RopeType Type { get => type; set => type = value; }
     public float RopeLengthProperty { get => ropeLength; set { ropeLength = Mathf.Max(0.1f, value); } }
     public float TotalRopeMass { get => totalRopeMass; set { totalRopeMass = Mathf.Max(0f, value); InitializeRope(); } }
     public int NumSegments { get => numSegments; set { if (numSegments != value && value >= 2) { numSegments = value; RebuildRopeMeshStructure(); } } }
@@ -69,8 +72,9 @@ public class Rope : MonoBehaviour
 
     void Start()
     {
+        pendulum = bucket.GetComponent<Pendulum>();
         previousRopeLength = ropeLength;
-         RebuildRopeMeshStructure();
+        RebuildRopeMeshStructure();
         // InitializeRope();
         // InitializeMeshComponents();
         // AllocateMeshData();
@@ -82,7 +86,7 @@ public class Rope : MonoBehaviour
         InitializeRope();
         UpdateVertexPositions();
     }
-        public void RebuildRopeMeshStructure()
+    public void RebuildRopeMeshStructure()
     {
         InitializeMeshComponents();
         InitializeRope();
@@ -119,13 +123,23 @@ public class Rope : MonoBehaviour
 
     void FixedUpdate()
     {
-        if (hangPoint == null) return; 
+
+
+        if (hangPoint == null) return;
+
+        if (pendulum != null)
+        {
+            inverseMasses[numSegments] =pendulum.CurrentMass > 0f ? 1.0f / pendulum.CurrentMass : 0f;
+        }
+
         // 1. Pin endpoints
-     Vector3 attachPoint = bucket != null ? bucket.TransformPoint(bucketTopOffset) : hangPoint.position + Vector3.down * ropeLength;
-         positions[0] = hangPoint.position;
+        Vector3 attachPoint = bucket != null ? bucket.TransformPoint(bucketTopOffset) : hangPoint.position + Vector3.down * ropeLength;
+        positions[0] = hangPoint.position;
         previousPositions[0] = hangPoint.position; // Hangpoint never moves
 
         positions[numSegments] = attachPoint;
+        float actualSpan = Vector3.Distance(hangPoint.position, attachPoint);
+        Debug.Log($"span={actualSpan:F3}  ropeLength={ropeLength:F3}  slack={ropeLength - actualSpan:F3}");
         if (bucket != null)
         {
 
@@ -139,7 +153,7 @@ public class Rope : MonoBehaviour
 
         var preset = Presets[(int)type];
 
-        if (!isSimulating  || type == RopeType.Metal || type == RopeType.Wooden)
+        if (!isSimulating || type == RopeType.Metal || type == RopeType.Wooden)
         {
 
             for (int i = 1; i < numSegments; i++)
@@ -183,7 +197,10 @@ public class Rope : MonoBehaviour
 
     void InitializeRope()
     {
-          if (hangPoint == null) return;
+
+        float bucketMass = pendulum != null ? pendulum.CurrentMass : 0f;
+
+        if (hangPoint == null) return;
         segmentLength = ropeLength / numSegments;
         positions = new Vector3[numSegments + 1];
         previousPositions = new Vector3[numSegments + 1];
@@ -208,7 +225,7 @@ public class Rope : MonoBehaviour
             if (i == 0)
                 inverseMasses[i] = 0f;
             else if (i == numSegments)
-                inverseMasses[i] = 0f;
+                inverseMasses[i] = bucketMass > 0f ? 1.0f / bucketMass : 0.0f;
             else
                 inverseMasses[i] = (segmentMass > 0) ? 1.0f / segmentMass : 0f;
         }
@@ -330,7 +347,7 @@ public class Rope : MonoBehaviour
             meshRenderer.material.color = new Color(0.6f, 0.4f, 0.2f);
         }
 
-       if (ropeMesh == null)
+        if (ropeMesh == null)
         {
             ropeMesh = new Mesh();
             meshFilter.mesh = ropeMesh;
@@ -389,8 +406,6 @@ public class Rope : MonoBehaviour
         ropeMesh.vertices = vertices;
         ropeMesh.triangles = triangles;
         ropeMesh.uv = uv;
+
+    } 
     }
-
-
-
-}

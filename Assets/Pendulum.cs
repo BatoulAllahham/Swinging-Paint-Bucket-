@@ -4,11 +4,9 @@ using UnityEngine;
 using static UnityEngine.Rendering.DebugUI.Table;
 
 public class Pendulum : MonoBehaviour
-{
-    //To connect the object in the scen with the script, they must have identical names to the ones in the scene
+{//To connect the object in the scen with the script, they must have identical names to the ones in the scene
 
- public bool isSimulating = false;
-    [Header("Angles and Velocities")]
+    public bool isSimulating = false; [Header("Angles and Velocities")]
 
     [SerializeField] float thetaAngularVelocity = 30.0f;
     [SerializeField] float phiAngularVelocity = 30.0f;
@@ -16,13 +14,13 @@ public class Pendulum : MonoBehaviour
     [SerializeField] float phiDegree = 45.0f;
 
     [Header("Swinging Rate")]
-    [SerializeField]  float swingingRate;
+    [SerializeField] float swingingRate;
 
     [Header("Forces")]
     [SerializeField] float gravity = 9.81f;
     [SerializeField] float airDensity = 1.225f;
     [SerializeField] float dragCoefficient = 1.0f; // Cd, ~1.0–1.2 for a bucket shape
-    // base racket mass (without fluid) set to 1
+                                                   // base racket mass (without fluid) set to 1
     [SerializeField] float mass = 1.0f;
     [Header("Dependencies")]
     public TotalWeightManager weightManager;
@@ -44,114 +42,22 @@ public class Pendulum : MonoBehaviour
     private bool isDragging = false;
 
     public float straightnessFactor = 1.0f;
+    private float pivotRadius;
+    public float CurrentMass => mass;
 
 
 
 
 
 
-    //private float previousTheta;
-    //private float previousPhi;
-    //private float previousTime;
-
-    //public void OnMouseDown()
-    //{
-    //    isDragging = true;
-    //    previousTheta = thetaRadian;
-    //    previousPhi = phiRadian;
-    //    previousTime = Time.time;
-    //}
-    //// Add these at the top of the class with the other private fields
-    //private Vector3[] velocityBuffer = new Vector3[5];
-    //private int velocityBufferIndex = 0;
-
-    //public void OnMouseDrag()
-    //{
-    //    Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-    //    Vector3 center = hangPoint.position;
-
-    //    // Cast ray against sphere of radius ropeLength centered at hangPoint
-    //    Vector3 oc = ray.origin - center;
-    //    float a = Vector3.Dot(ray.direction, ray.direction);
-    //    float b = 2.0f * Vector3.Dot(oc, ray.direction);
-    //    float c = Vector3.Dot(oc, oc) - ropeLength * ropeLength;
-    //    float discriminant = b * b - 4 * a * c;
-
-    //    Vector3 constrainedPos;
-    //    if (discriminant >= 0)
-    //    {
-    //        // Ray hits sphere — take closer intersection
-    //        float t = (-b - Mathf.Sqrt(discriminant)) / (2.0f * a);
-    //        if (t < 0) t = (-b + Mathf.Sqrt(discriminant)) / (2.0f * a);
-    //        constrainedPos = ray.origin + t * ray.direction;
-    //    }
-    //    else
-    //    {
-    //        // Ray misses sphere — project closest point on ray onto sphere surface
-    //        float t = Mathf.Max(0, -Vector3.Dot(oc, ray.direction) / a);
-    //        Vector3 closest = ray.origin + t * ray.direction;
-    //        constrainedPos = center + (closest - center).normalized * ropeLength;
-    //    }
-
-    //    transform.position = constrainedPos;
-
-    //    // Convert to spherical coordinates
-    //    Vector3 relPos = constrainedPos - center;
-    //    thetaRadian = Mathf.Acos(Mathf.Clamp(-relPos.y / ropeLength, -1f, 1f));
-    //    thetaRadian = Mathf.Max(thetaRadian, 5.0f * Mathf.Deg2Rad); // singularity guard
-    //    phiRadian = Mathf.Atan2(-relPos.z, relPos.x);
-
-    //    // Estimate angular velocity
-    //    float dt = Time.time - previousTime;
-    //    if (dt > 0.0001f)
-    //    {
-    //        float thetaVel = (thetaRadian - previousTheta) / dt;
-
-    //        float deltaPhiRad = Mathf.DeltaAngle(
-    //            previousPhi * Mathf.Rad2Deg,
-    //            phiRadian * Mathf.Rad2Deg
-    //        ) * Mathf.Deg2Rad;
-    //        float phiVel = deltaPhiRad / dt;
-
-    //        // Store in rolling buffer
-    //        velocityBuffer[velocityBufferIndex % 5] = new Vector3(thetaVel, phiVel, 0);
-    //        velocityBufferIndex++;
-
-    //        // Average over buffer for stable handoff
-    //        Vector3 avgVel = Vector3.zero;
-    //        int count = Mathf.Min(velocityBufferIndex, 5);
-    //        for (int i = 0; i < count; i++)
-    //            avgVel += velocityBuffer[i];
-    //        avgVel /= count;
-
-    //        thetaAngularVelo = avgVel.x;
-    //        phiAngularVelo = avgVel.y;
-    //    }
-
-    //    previousTheta = thetaRadian;
-    //    previousPhi = phiRadian;
-    //    previousTime = Time.time;
-
-    //    // Keep inspector in sync
-    //    thetaDegree = thetaRadian * Mathf.Rad2Deg;
-    //    phiDegree = phiRadian * Mathf.Rad2Deg;
-    //    thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg;
-    //    phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg;
-    //}
-
-    //public void OnMouseUp()
-    //{
-    //    isDragging = false;
-    //    velocityBufferIndex = 0; // reset buffer for next drag
-    //}
     public float ThetaAngularVelocity { get => thetaAngularVelocity; set { thetaAngularVelocity = value; thetaAngularVelo = value * Mathf.Deg2Rad; } }
     public float PhiAngularVelocity { get => phiAngularVelocity; set { phiAngularVelocity = value; phiAngularVelo = value * Mathf.Deg2Rad; } }
     public float ThetaDegree { get => thetaDegree; set { thetaDegree = Mathf.Clamp(value, -90f, 90f); thetaRadian = thetaDegree * Mathf.Deg2Rad; } }
     public float PhiDegree { get => phiDegree; set { phiDegree = value; phiRadian = value * Mathf.Deg2Rad; } }
     public float Gravity { get => gravity; set => gravity = value; }
     public float AirDensity { get => airDensity; set => airDensity = value; }
-    public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
-     public float SwingingRate { get => swingingRate; set => swingingRate = value; }
+        public float DragCoefficient { get => dragCoefficient; set => dragCoefficient = value; }
+    public float SwingingRate { get => swingingRate; set => swingingRate = value; }
 
 
 
@@ -181,6 +87,13 @@ public class Pendulum : MonoBehaviour
         Vector3 position = new Vector3(getXCoordinate(), getYCoordinate(), getZCoordinate());
         return position;
     }
+
+
+
+    //float getXCoordinate() => pivotRadius * Mathf.Sin(thetaRadian) * Mathf.Cos(phiRadian);
+    //float getYCoordinate() => -pivotRadius * Mathf.Cos(thetaRadian);
+    //float getZCoordinate() => -pivotRadius * Mathf.Sin(thetaRadian) * Mathf.Sin(phiRadian);
+
 
 
 
@@ -234,11 +147,11 @@ public class Pendulum : MonoBehaviour
     {
         //[θ̈,φ̈,θ̇,φ̇]
         float[] ret = {
-        getThetaAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
-        getPhiAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
-        thetaAngularVelo,
-        phiAngularVelo
-    };
+    getThetaAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
+    getPhiAngularAcceleration(thetaAngularVelo, phiAngularVelo, thetaRadian),
+    thetaAngularVelo,
+    phiAngularVelo
+};
         return ret;
     }
 
@@ -254,11 +167,11 @@ public class Pendulum : MonoBehaviour
         float[] k4 = Step(thetaAngularVelo + k3[0] * dt, phiAngularVelo + k3[1] * dt, thetaRadian + k3[2] * dt);
 
         float[] sum = {
-            dt * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) / 6,   //[Δθ̇,Δφ̇,Δθ,Δφ],,,,,,,,,Δy=6dt​(k1​+2k2​+2k3​+k4​) rule 
-            dt * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]) / 6,
-            dt * (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]) / 6,
-            dt * (k1[3] + 2*k2[3] + 2*k3[3] + k4[3]) / 6
-        };
+        dt * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]) / 6,   //[Δθ̇,Δφ̇,Δθ,Δφ],,,,,,,,,Δy=6dt​(k1​+2k2​+2k3​+k4​) rule 
+        dt * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]) / 6,
+        dt * (k1[2] + 2*k2[2] + 2*k3[2] + k4[2]) / 6,
+        dt * (k1[3] + 2*k2[3] + 2*k3[3] + k4[3]) / 6
+    };
 
         return sum;
     }
@@ -273,75 +186,103 @@ public class Pendulum : MonoBehaviour
     }
 
 
+    //void Start()
+    //{
+    //    initialRotation = transform.rotation;
+
+    //    mass = baseMass;
+    //    ropeComponent = rope.GetComponent<Rope>();
+    //    ropeLength = ropeComponent.RopeLength;
+
+    //    thetaRadian = Mathf.Deg2Rad * thetaDegree;
+    //    phiRadian = Mathf.Deg2Rad * phiDegree;
+    //    thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity;
+    //    phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity;
+    //    transform.position = getPosition() + hangPoint.position;
+
+
+    //}
+
+
     void Start()
     {
         initialRotation = transform.rotation;
-
         mass = baseMass;
         ropeComponent = rope.GetComponent<Rope>();
         ropeLength = ropeComponent.RopeLength;
+        pivotRadius = ropeLength + ropeComponent.BucketTopOffset.magnitude;
 
         thetaRadian = Mathf.Deg2Rad * thetaDegree;
         phiRadian = Mathf.Deg2Rad * phiDegree;
         thetaAngularVelo = Mathf.Deg2Rad * thetaAngularVelocity;
         phiAngularVelo = Mathf.Deg2Rad * phiAngularVelocity;
         transform.position = getPosition() + hangPoint.position;
-
-
     }
+
 
 
     private void FixedUpdate()
     {
 
-        swingingRate = getSpeed(thetaAngularVelo, phiAngularVelo, thetaRadian);
+        SwingingRate = getSpeed(thetaAngularVelo, phiAngularVelo, thetaRadian);
+
+
+
+        if (ropeComponent != null)
+        {
+            ropeLength = ropeComponent.RopeLength;
+            pivotRadius = ropeLength + ropeComponent.BucketTopOffset.magnitude;
+        }
+
+
 
         //ropeLength = ropeComponent.CurrentStretchedLength;
-       if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
+        if (ropeComponent != null) ropeLength = ropeComponent.RopeLength;
         float normalizedTheta = Mathf.Abs(thetaDegree) / 45.0f;
         straightnessFactor = 1.0f - Mathf.Clamp01(normalizedTheta);
 
         if (isSimulating && !isDragging)
         {
             if (weightManager != null) mass = baseMass + weightManager.totalCombinedWeight;
-            
+
             float[] state = RungeKutta_4th(Time.fixedDeltaTime);
-            thetaAngularVelo += state[0];       
-            phiAngularVelo += state[1];         
+            thetaAngularVelo += state[0];
+            phiAngularVelo += state[1];
 
             thetaAngularVelocity = thetaAngularVelo * Mathf.Rad2Deg;
             phiAngularVelocity = phiAngularVelo * Mathf.Rad2Deg;
-            thetaRadian += state[2];      
-            phiRadian += state[3];          
+            thetaRadian += state[2];
+            phiRadian += state[3];
 
             thetaDegree = thetaRadian * Mathf.Rad2Deg;
-            phiDegree = phiRadian * Mathf.Rad2Deg;}
+            phiDegree = phiRadian * Mathf.Rad2Deg;
+        }
 
-            else if (!isSimulating && !isDragging)
+        else if (!isSimulating && !isDragging)
         {
             thetaRadian = thetaDegree * Mathf.Deg2Rad;
             phiRadian = phiDegree * Mathf.Deg2Rad;
         }
-           UpdateTransform();
+        UpdateTransform();
 
-            //transform.up = (hangPoint.position - transform.position).normalized;
+        //transform.up = (hangPoint.position - transform.position).normalized;
 
-            //transform.rotation = Quaternion.identity;
+        //transform.rotation = Quaternion.identity;
 
 
 
-        
+
         //UpdateRope();
 
 
 
     }
-        void UpdateTransform()
+    void UpdateTransform()
     {
         if (hangPoint == null) return; // Crash protection
         transform.position = getPosition() + hangPoint.position;
         Vector3 ropeDirection = (hangPoint.position - transform.position).normalized;
-        transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection)* initialRotation;
+        transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection) * initialRotation;
 
         // Quaternion Orientation = Quaternion.LookRotation(new Vector3(-transform.position.x, -transform.position.y, -transform.position.z));
         // Quaternion correction = Quaternion.Inverse(Quaternion.LookRotation(Vector3.up, transform.position));
@@ -365,17 +306,13 @@ public class Pendulum : MonoBehaviour
         return new Vector3(vx, vy, vz);
     }
 
-
-
-
-    //FOLLOWED THIS APPROACH
-    //last solution for the rotation of the bucket : 
-    //private Quaternion initialRotation;
-    //in the start method : initialRotation = transform.rotation;
-    //in fixedUpdate :
-    //Vector3 ropeDirection = (hangPoint.position - transform.position).normalized;
-    //transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection)* initialRotation;
-
-
-
 }
+
+
+//FOLLOWED THIS APPROACH
+//last solution for the rotation of the bucket : 
+//private Quaternion initialRotation;
+//in the start method : initialRotation = transform.rotation;
+//in fixedUpdate :
+//Vector3 ropeDirection = (hangPoint.position - transform.position).normalized;
+//transform.rotation = Quaternion.FromToRotation(Vector3.up, ropeDirection)* initialRotation;
