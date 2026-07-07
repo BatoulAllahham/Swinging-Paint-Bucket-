@@ -778,7 +778,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             {
                 slideDir /= lenDir;
 
-                vel = slideDir * paintFlowRate;
+                float3 targetVel = slideDir * paintFlowRate;
+                vel = lerp(vel, targetVel, 0.2);
             }
             // GOODI EDITS END
         }
@@ -816,7 +817,11 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             float2 prevPixelPos = float2(prevUvX, prevUvY) * paintTextureSize;
 
             // TEMPERATURE
-            int radius = max(2, (int) (lerp(4, 2, paintFlowRate) * tempSpreadFactor));
+            float movePixels = length(pixelPos - prevPixelPos);
+
+            int radius = max(
+    3,
+    (int) (lerp(4, 2, paintFlowRate) + movePixels * 0.25) * tempSpreadFactor);
             float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
 
             float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
@@ -846,8 +851,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                     float2 closest = prevPixelPos + segDir * t;
                     float distF = length(pixelCenter - closest) / max(radius, 1);
 
-                    float falloff = saturate(1.0 - distF);
-                    float alpha = falloff * trailAlpha;
+                    float falloff = pow(saturate(1.0 - distF), 2.0);
+                    float alpha = smoothstep(0.0, 1.0, falloff) * trailAlpha;
                     if (alpha < 0.001)
                         continue;
 
