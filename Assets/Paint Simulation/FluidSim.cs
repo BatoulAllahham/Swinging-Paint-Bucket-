@@ -18,9 +18,15 @@ namespace PaintSim.Fluid.Simulation
 		public Material canvasMaterial;
 		public Color paintColour = Color.blue; // colour this bucket's particles paint onto the canvas
 		RenderTexture paintTexture;
+        // Paint Coverage
+        private ComputeBuffer paintCoverageBuffer;
+        private uint[] paintCoverageData = new uint[1];
 
-		// MIXING
-		RenderTexture paintAccumTexture;
+        [Header("Paint Coverage")]
+        public float paintCoveragePercent;
+
+        // MIXING
+        RenderTexture paintAccumTexture;
 		static RenderTexture sharedPaintAccumTexture; // shared across all buckets
 
 		// STYLE: per-pixel wetness (R) and bump strength (G) baked at deposit time
@@ -132,8 +138,8 @@ namespace PaintSim.Fluid.Simulation
 		const int updateSpringsKernel = 10;
 		const int applySpringForcesKernel = 11;
 		const int mapOriginalToNewKernel = 12;
-
-		SpatialHash spatialHash;
+        int paintCoverageKernel;
+        SpatialHash spatialHash;
 
 		// State
 		bool isPaused;
@@ -266,8 +272,9 @@ namespace PaintSim.Fluid.Simulation
 			sortTarget_velocityBuffer = CreateStructuredBuffer<float3>(numParticles);
 			bucketCountBuffer = new ComputeBuffer(1, sizeof(int));
 			flowResultBuffer = new ComputeBuffer(4, sizeof(int));
-			// Spring Allocations (8 slots per particle)
-			springBuffer = new ComputeBuffer(numParticles * 8, 8);
+            paintCoverageBuffer = new ComputeBuffer(1, sizeof(uint));
+            // Spring Allocations (8 slots per particle)
+            springBuffer = new ComputeBuffer(numParticles * 8, 8);
 			sortTarget_springBuffer = new ComputeBuffer(numParticles * 8, 8);
 			originalToNewIndexBuffer = CreateStructuredBuffer<uint>(numParticles);
 
@@ -442,10 +449,14 @@ namespace PaintSim.Fluid.Simulation
 
 			compute.SetTexture(updatePositionsKernel, "PaintTexture", paintTexture);
 			compute.SetInt("paintTextureSize", paintTextureResolution);
+            paintCoverageKernel = compute.FindKernel("CalculatePaintCoverage");
 
-			// MIXING
-			// Share accum texture across all buckets (same logic as paintTexture)
-			if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
+            compute.SetTexture(paintCoverageKernel, "PaintTexture", paintTexture);
+            compute.SetBuffer(paintCoverageKernel, "PaintCoverageBuffer", paintCoverageBuffer);
+            compute.SetInt("paintTextureSize", paintTextureResolution);
+            // MIXING
+            // Share accum texture across all buckets (same logic as paintTexture)
+            if (sharedPaintAccumTexture != null && sharedPaintAccumTexture.IsCreated())
 			{
 				paintAccumTexture = sharedPaintAccumTexture;
 			}
@@ -541,8 +552,9 @@ namespace PaintSim.Fluid.Simulation
 		{
 			float subStepDeltaTime = frameDeltaTime / iterationsPerFrame;
 			UpdateSettings(subStepDeltaTime, frameDeltaTime);
-
-			flowData[0] = 0; flowData[1] = 0; flowData[2] = 0; flowData[3] = 0;
+            paintCoverageData[0] = 0;
+            paintCoverageBuffer.SetData(paintCoverageData);
+            flowData[0] = 0; flowData[1] = 0; flowData[2] = 0; flowData[3] = 0;
 			flowResultBuffer.SetData(flowData);
 			// Simulation sub-steps
 			for (int i = 0; i < iterationsPerFrame; i++)
@@ -567,9 +579,17 @@ namespace PaintSim.Fluid.Simulation
 			{
 				currentFlowSpeed = 0f;
 			}
+            compute.Dispatch(
+    paintCoverageKernel,
+    Mathf.CeilToInt(paintTextureResolution / 16f),
+    Mathf.CeilToInt(paintTextureResolution / 16f),
+    1);
+            paintCoverageBuffer.GetData(paintCoverageData);
 
-
-		}
+            paintCoveragePercent =
+                (float)paintCoverageData[0] /
+                (paintTextureResolution * paintTextureResolution) * 100f;
+        }
 
 
 
@@ -785,8 +805,10 @@ namespace PaintSim.Fluid.Simulation
 			if (bucketCountBuffer != null) bucketCountBuffer.Release();
 
 			if (flowResultBuffer != null) flowResultBuffer.Release();
+            if (paintCoverageBuffer != null)
+                paintCoverageBuffer.Release();
 
-			if (spatialHash != null) spatialHash.Release();
+            if (spatialHash != null) spatialHash.Release();
 		}
 
 		void OnDrawGizmos()

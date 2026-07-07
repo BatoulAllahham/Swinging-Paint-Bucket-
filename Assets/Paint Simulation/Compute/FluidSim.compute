@@ -11,6 +11,7 @@
 #pragma kernel UpdateSprings
 #pragma kernel ApplySpringForces
 #pragma kernel MapOriginalToNew
+#pragma kernel CalculatePaintCoverage
 
 // Includes
 #include "./FluidMaths3D.hlsl"
@@ -61,6 +62,8 @@ const float plasticityRate;
 const float yieldRatio;
 
 RWStructuredBuffer<int> BucketParticleCount;
+RWStructuredBuffer<uint> PaintCoverageBuffer; // [0] = عدد البكسلات الملونة
+
 const float4x4 localToWorld;
 const float4x4 worldToLocal;
 RWStructuredBuffer<int> ParticleStates;
@@ -1302,3 +1305,21 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 }
 
 }
+[numthreads(16, 16, 1)]
+void CalculatePaintCoverage(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= paintTextureSize || id.y >= paintTextureSize)
+        return;
+
+    
+
+
+    float4 pixel = PaintTexture[int2(id.xy)];
+
+    if (pixel.a > 0.001)
+    {
+        InterlockedAdd(PaintCoverageBuffer[0], 1);
+    }
+}
+
+
