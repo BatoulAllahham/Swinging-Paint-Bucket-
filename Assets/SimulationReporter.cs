@@ -83,18 +83,18 @@ public class SimulationReporter : MonoBehaviour
             UnityEngine.Debug.LogError($"Failed to save/open report: {e.Message}");
         }
     }
-private void OpenFolderAndSelectFile(string filePath)
-    {
-        // Check if we are on Windows
-        #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            // Normalize path for Windows (\ instead of /)
-            string normalizedPath = filePath.Replace("/", "\\");
+// private void OpenFolderAndSelectFile(string filePath)
+//     {
+//         // Check if we are on Windows
+//         #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+//             // Normalize path for Windows (\ instead of /)
+//             string normalizedPath = filePath.Replace("/", "\\");
             
-            // Start explorer.exe with the /select argument to highlight the file
-            Process.Start("explorer.exe", $"/select, \"{normalizedPath}\"");
-        #else
-            // Fallback for other platforms (just logs, as explorer.exe is Windows-only)
-            UnityEngine.Debug.Log("Auto-open folder is only supported on Windows.");
-        #endif
-    }
+//             // Start explorer.exe with the /select argument to highlight the file
+//             Process.Start("explorer.exe", $"/select, \"{normalizedPath}\"");
+//         #else
+//             // Fallback for other platforms (just logs, as explorer.exe is Windows-only)
+//             UnityEngine.Debug.Log("Auto-open folder is only supported on Windows.");
+//         #endif
+//     }
 }
