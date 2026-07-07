@@ -86,8 +86,7 @@
                     </ui:VisualElement>
 
                     <ui:VisualElement class="footer-section" style="flex-direction: row; justify-content: space-between; margin-top: 15px; margin-bottom: 25px;">
-                        <ui:Button name="play-pause-btn" text="START PENDULUM" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #059669; color: #ffffff;" />
-                        <ui:Button name="reset-btn" text="RESET" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #ffff66; color: #1f0202;" />
+                       <ui:Button name="reset-btn" text="RESET" class="action-btn" style="flex-grow: 1; margin-right: 10px; background-color: #ffff66; color: #1f0202;" />
                         <ui:Button name="back-to-menu-btn" text="BACK TO MENU" class="action-btn" style="flex-grow: 1;background-color: #898985; color: #0f0101;" />
                     </ui:VisualElement>
 

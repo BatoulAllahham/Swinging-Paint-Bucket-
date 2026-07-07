@@ -1,53 +1,23 @@
 using UnityEngine;
 using UnityEngine.UIElements;
 using PaintSim.Fluid.Simulation;
-using UnityEngine.EventSystems; // Add this
+using UnityEngine.EventSystems; 
+
 public class FluidOnlyMasterUI : MonoBehaviour
 {
-    private UIDocument uiDocument;
-    private FluidOnlySim[] allBuckets;
-    private FluidOnlySim activeBucket;
-    private ScrollView bucketList;
-    private VisualElement rootVisual;
+    [Header("Simulation Reference")]
+    public FluidOnlySim fluidSim;
+    
+    [Tooltip("The transform to rotate when using the fluid rotation sliders.")]
     public Transform targetTransform;
+
+    private UIDocument uiDocument;
+    private VisualElement rootVisual;
     private VisualElement initialConfigPanel;
     private VisualElement mainSimulationPanel;
 
     private Label lblParticles, lblWeight, lblFlow, lblSensor;
     private VisualElement topBottomControls, sideControls, colorPreview;
-
-    private bool isPlaying = false; 
-
-    private Pendulum GetPendulum()
-    {
-        if (activeBucket == null) return FindObjectOfType<Pendulum>();
-        Pendulum p = activeBucket.GetComponent<Pendulum>();
-        if (p == null) p = activeBucket.GetComponentInParent<Pendulum>();
-        if (p == null) p = activeBucket.GetComponentInChildren<Pendulum>();
-        if (p == null) p = FindObjectOfType<Pendulum>(); 
-        return p;
-    }
-
-    private Rope GetRope()
-    {
-        if (activeBucket == null) return FindObjectOfType<Rope>();
-        Rope r = activeBucket.GetComponent<Rope>();
-        if (r == null) r = activeBucket.GetComponentInParent<Rope>();
-        if (r == null) r = activeBucket.GetComponentInChildren<Rope>();
-        if (r == null) r = FindObjectOfType<Rope>(); 
-        return r;
-    }
-    void UpdateRotation(string axis, float value)
-    {
-        if (targetTransform == null) return;
-        
-        Vector3 rot = targetTransform.localEulerAngles;
-        if (axis == "x") rot.x = value;
-        if (axis == "y") rot.y = value;
-        if (axis == "z") rot.z = value;
-        
-        targetTransform.localEulerAngles = rot;
-    }
 
     void OnEnable()
     {
@@ -56,6 +26,9 @@ public class FluidOnlyMasterUI : MonoBehaviour
         uiDocument.rootVisualElement.pickingMode = PickingMode.Position;
         
         rootVisual = uiDocument.rootVisualElement;
+
+        // Auto-find the simulation if not assigned
+        if (fluidSim == null) fluidSim = FindObjectOfType<FluidOnlySim>();
 
         initialConfigPanel = rootVisual.Q<VisualElement>("initial-config-panel");
         mainSimulationPanel = rootVisual.Q<VisualElement>("main-simulation-panel");
@@ -70,78 +43,47 @@ public class FluidOnlyMasterUI : MonoBehaviour
         colorPreview = rootVisual.Q<VisualElement>("color-preview");
 
         RegisterAllCallbacks(rootVisual);
-        InitializeBucketList(rootVisual);
-        
     }
     
+    void Start()
+    {
+        if (fluidSim != null)
+        {
+            UpdateVisualsToMatchSim(rootVisual, fluidSim);
+        }
+    }
+
     void Update()
     {
-        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) {
-        return; 
-    }
+        // Prevent UI interactions from clicking through to the scene
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) 
+        {
+            return; 
+        }
+
         if (mainSimulationPanel == null || mainSimulationPanel.style.display == DisplayStyle.None)
             return;
 
-        if (activeBucket != null)
+        // Update Live Telemetry
+        if (fluidSim != null)
         {
-            if (lblParticles != null) lblParticles.text = $"PARTICLES: {activeBucket.currentParticleCount:N0}";
-            if (lblWeight != null) lblWeight.text = $"WEIGHT: {activeBucket.currentBucketWeight:F3} kg";
-            if (lblFlow != null) lblFlow.text = $"FLOW SPEED: {activeBucket.currentFlowSpeed:F2}";
-            if (lblSensor != null) lblSensor.text = $"SENSOR POS: {activeBucket.sensorCenter.x:F2}, {activeBucket.sensorCenter.y:F2}, {activeBucket.sensorCenter.z:F2}";
-
-            var pendulum = GetPendulum();
-            if (pendulum != null && isPlaying)
-            {
-                UpdateSliderLiveValue("pen-theta-vel", pendulum.ThetaAngularVelocity);
-                UpdateSliderLiveValue("pen-phi-vel", pendulum.PhiAngularVelocity);
-                UpdateSliderLiveValue("pen-theta-deg", pendulum.ThetaDegree);
-                UpdateSliderLiveValue("pen-phi-deg", pendulum.PhiDegree);
-                UpdateSliderLiveValue("swinging-rate", pendulum.SwingingRate);
-            }
+            if (lblParticles != null) lblParticles.text = $"PARTICLES: {fluidSim.currentParticleCount:N0}";
+            if (lblWeight != null) lblWeight.text = $"WEIGHT: {fluidSim.currentBucketWeight:F3} kg";
+            if (lblFlow != null) lblFlow.text = $"FLOW SPEED: {fluidSim.currentFlowSpeed:F2}";
+            if (lblSensor != null) lblSensor.text = $"SENSOR POS: {fluidSim.sensorCenter.x:F2}, {fluidSim.sensorCenter.y:F2}, {fluidSim.sensorCenter.z:F2}";
         }
     }
 
-    private void UpdateSliderLiveValue(string sliderName, float liveValue)
+    void UpdateRotation(string axis, float value)
     {
-        var slider = rootVisual.Q<Slider>(sliderName);
-        if (slider != null && rootVisual.panel.focusController.focusedElement != slider)
-        {
-            slider.SetValueWithoutNotify(liveValue);
-        }
-    }
-
-    void Start()
-    {
-        if (activeBucket != null)
-        {
-            UpdateVisualsToMatchBucket(rootVisual, activeBucket);
-        }
-    }
-
-    void InitializeBucketList(VisualElement root)
-    {
-        bucketList = root.Q<ScrollView>("bucket-list");
-        if (bucketList == null) return;
-        bucketList.Clear();
-        allBuckets = FindObjectsOfType<FluidOnlySim>();
-
-        foreach (var bucket in allBuckets)
-        {
-            Button btn = new Button { text = bucket.name };
-            btn.AddToClassList("bucket-btn");
-            btn.clicked += () => SelectBucket(bucket, btn, root);
-            bucketList.Add(btn);
-        }
-
-        if (allBuckets.Length > 0) SelectBucket(allBuckets[0], (Button)bucketList.ElementAt(0), root);
-    }
-
-    void SelectBucket(FluidOnlySim bucket, Button activeBtn, VisualElement root)
-    {
-        activeBucket = bucket;
-        foreach (var child in bucketList.Children()) child.RemoveFromClassList("bucket-btn-active");
-        activeBtn.AddToClassList("bucket-btn-active");
-        UpdateVisualsToMatchBucket(root, bucket);
+        if (targetTransform == null) return;
+        
+        Vector3 rot = targetTransform.localEulerAngles;
+        if (axis == "x") rot.x = value;
+        if (axis == "y") rot.y = value;
+        if (axis == "z") rot.z = value;
+        
+        targetTransform.localEulerAngles = rot;
     }
 
     void UpdateColorPreview(Color c)
@@ -149,193 +91,132 @@ public class FluidOnlyMasterUI : MonoBehaviour
         if (colorPreview != null) colorPreview.style.backgroundColor = c;
     }
 
-private void ClearCanvasTextures()
-{
-    var prevActive = RenderTexture.active;
-
-
-    ClearSharedTexture("sharedPaintAccumTexture");
-    ClearSharedTexture("sharedPaintStyleTexture");
-
-  if (allBuckets != null)
+    private void ClearCanvasTextures()
     {
-        foreach (var bucket in allBuckets)
+        var prevActive = RenderTexture.active;
+
+        ClearSharedTexture("sharedPaintAccumTexture");
+        ClearSharedTexture("sharedPaintStyleTexture");
+
+        if (fluidSim != null)
         {
-            ClearInstanceTexture(bucket, "paintTexture");
+            ClearInstanceTexture(fluidSim, "paintTexture");
         }
+
+        RenderTexture.active = prevActive;
     }
 
-    RenderTexture.active = prevActive;
-}
+    private void ClearSharedTexture(string fieldName)
+    {
+        var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var rt = field?.GetValue(null) as RenderTexture;
+        if (rt == null) return;
 
-private void ClearSharedTexture(string fieldName)
-{
-    var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-    var rt = field?.GetValue(null) as RenderTexture;
-    if (rt == null) return;
+        RenderTexture.active = rt;
+        GL.Clear(false, true, Color.clear);
+    }
 
-    RenderTexture.active = rt;
-    GL.Clear(false, true, Color.clear);
-}
+    private void ClearInstanceTexture(FluidOnlySim sim, string fieldName)
+    {
+        if (sim == null) return;
+        var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var rt = field?.GetValue(sim) as RenderTexture;
+        if (rt == null) return;
 
-private void ClearInstanceTexture(FluidOnlySim sim, string fieldName)
-{
-    if (sim == null) return;
-    var field = typeof(FluidOnlySim).GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-    var rt = field?.GetValue(sim) as RenderTexture;
-    if (rt == null) return;
-
-    RenderTexture.active = rt;
-    GL.Clear(false, true, Color.clear);
-}
+        RenderTexture.active = rt;
+        GL.Clear(false, true, Color.clear);
+    }
 
     void RegisterAllCallbacks(VisualElement root)
     {
+        // 1. Panel Navigation & Resets
         var confirmBtn = root.Q<Button>("confirm-setup-btn");
         if (confirmBtn != null)
         {
             confirmBtn.clicked += () => {
-                if (activeBucket != null)
+                if (fluidSim != null)
                 {
-                    activeBucket.ApplySurfacePreset();
-                    activeBucket.ApplyPaintTypeSettings();
-                    activeBucket.ResetParticles(); 
+                    fluidSim.ApplySurfacePreset();
+                    fluidSim.ApplyPaintTypeSettings();
+                    fluidSim.ResetParticles(); 
                 }
 
                 if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.None;
                 if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.Flex;
 
-                UpdateVisualsToMatchBucket(root, activeBucket);
+                UpdateVisualsToMatchSim(root, fluidSim);
             };
         }
 
-        var playBtn = root.Q<Button>("play-pause-btn");
         var resetBtn = root.Q<Button>("reset-btn");
-
-        if (playBtn != null)
+        if (resetBtn != null)
         {
-            playBtn.clicked += () => {
-                isPlaying = !isPlaying;
-                playBtn.text = isPlaying ? "PAUSE PENDULUM" : "START PENDULUM";
-                ColorUtility.TryParseHtmlString(isPlaying ? "#ca8a04" : "#059669", out Color btnColor);
-                playBtn.style.backgroundColor = btnColor;
+            resetBtn.clicked += () => {
+                ClearCanvasTextures();
 
-                var p = GetPendulum();
-                if (p != null) p.isSimulating = isPlaying;
+                if (fluidSim != null)
+                {
+                    fluidSim.ResetParticles();
+                    fluidSim.holeSize = 0f; // Seal up the holes on reset
+                }
+
+                if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
+                if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
                 
-                var r = GetRope();
-                if (r != null) r.isSimulating = isPlaying;
+                UpdateVisualsToMatchSim(root, fluidSim);
             };
         }
 
-if (resetBtn != null)
-{
-    resetBtn.clicked += () => {
-        if (isPlaying && playBtn != null) {
-            isPlaying = false;
-            playBtn.text = "START PENDULUM";
-            ColorUtility.TryParseHtmlString("#059669", out Color defaultGreen);
-            playBtn.style.backgroundColor = defaultGreen;
-            
-            var pend = GetPendulum();
-            if (pend != null) pend.isSimulating = false;
-            
-            var rop = GetRope();
-            if (rop != null) rop.isSimulating = false;
-        }
-        
-        ClearCanvasTextures();
+        root.Q<Button>("back-to-menu-btn")?.RegisterCallback<ClickEvent>(evt => {
+            UnityEngine.SceneManagement.SceneManager.LoadScene("Main Menu");
+        });
 
-        // Reset particles for all buckets to clean up old frames completely
-        if (allBuckets != null)
-        {
-            foreach (var bucket in allBuckets)
-            {
-                bucket.ResetParticles();
-                bucket.holeSize = 0f; // Seal up the holes on reset
-            }
-        }
-        else if (activeBucket != null)
-        {
-            activeBucket.ResetParticles();
-        }
+        // 2. Paint Colors
+        root.Q<Slider>("color-r")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) { Color c = fluidSim.paintColour; c.r = evt.newValue; fluidSim.paintColour = c; UpdateColorPreview(c); } });
+        root.Q<Slider>("color-g")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) { Color c = fluidSim.paintColour; c.g = evt.newValue; fluidSim.paintColour = c; UpdateColorPreview(c); } });
+        root.Q<Slider>("color-b")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) { Color c = fluidSim.paintColour; c.b = evt.newValue; fluidSim.paintColour = c; UpdateColorPreview(c); } });
         
-        var p = GetPendulum();
-        if (p != null){ p.ResetToInitial();
-        p.ThetaAngularVelocity = 0f;
-            p.PhiAngularVelocity = 0f;
-            p.ThetaDegree = 45f;    // Set to your actual default starting angle
-            p.PhiDegree = 0f;       // Set to your actual default starting angle
-            p.Gravity = 9.81f;      // Standard gravity
-            p.AirDensity = 1.2f;    // Standard air density
-            p.DragCoefficient = 0.5f; 
-            p.SwingingRate = 1f;}
-
-        
-        var r = GetRope();
-        if (r != null) r.ResetRope();
-
-      
-        if (mainSimulationPanel != null) mainSimulationPanel.style.display = DisplayStyle.None;
-        if (initialConfigPanel != null) initialConfigPanel.style.display = DisplayStyle.Flex;
-        
-        UpdateVisualsToMatchBucket(root, activeBucket);
-    };
-}
-
-        root.Q<Slider>("color-r")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.r = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
-        root.Q<Slider>("color-g")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.g = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
-        root.Q<Slider>("color-b")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) { Color c = activeBucket.paintColour; c.b = evt.newValue; activeBucket.paintColour = c; UpdateColorPreview(c); } });
-        
+        // 3. Types and Presets
         root.Q<EnumField>("paint-type")?.RegisterValueChangedCallback(evt => {
-             if (activeBucket != null) { 
-                activeBucket.paintType = (FluidOnlySim.PaintType)evt.newValue;
-                activeBucket.ApplyPaintTypeSettings();
-                 } });
-        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => 
-        { if (activeBucket != null) 
-    { 
-        activeBucket.surfaceType = (FluidOnlySim.SurfaceType)evt.newValue; 
-        activeBucket.ApplySurfacePreset(); 
-    } 
-});
-        root.Q<Slider>("canvas-rot-x")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.x = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
-        root.Q<Slider>("canvas-rot-y")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.y = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
-        root.Q<Slider>("canvas-rot-z")?.RegisterValueChangedCallback(evt => { if (activeBucket != null && activeBucket.canvasCollision != null) { Vector3 rot = activeBucket.canvasCollision.transform.localEulerAngles; rot.z = evt.newValue; activeBucket.canvasCollision.transform.localEulerAngles = rot; } });
+            if (fluidSim != null) { 
+                fluidSim.paintType = (FluidOnlySim.PaintType)evt.newValue;
+                fluidSim.ApplyPaintTypeSettings();
+            } 
+        });
 
-        root.Q<Slider>("pen-theta-vel")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.ThetaAngularVelocity = evt.newValue; });
-        root.Q<Slider>("pen-phi-vel")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.PhiAngularVelocity = evt.newValue; });
-        root.Q<Slider>("pen-theta-deg")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.ThetaDegree = evt.newValue; });
-        root.Q<Slider>("pen-phi-deg")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.PhiDegree = evt.newValue; });
-        root.Q<Slider>("pen-gravity")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.Gravity = evt.newValue; });
-        root.Q<Slider>("pen-air-density")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.AirDensity = evt.newValue; });
-        root.Q<Slider>("pen-drag")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.DragCoefficient = evt.newValue; });
-        root.Q<Slider>("swinging-rate")?.RegisterValueChangedCallback(evt => { var p = GetPendulum(); if (p != null) p.SwingingRate = evt.newValue; });
-        root.Q<EnumField>("rope-type")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.Type = (Rope.RopeType)evt.newValue; });
-        root.Q<Slider>("rope-length")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.RopeLengthProperty = evt.newValue; });
-        root.Q<Slider>("rope-mass")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.TotalRopeMass = evt.newValue; });
-        root.Q<SliderInt>("rope-segments")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.NumSegments = evt.newValue; });
-        root.Q<Slider>("rope-radius")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.RopeRadius = evt.newValue; });
-        root.Q<SliderInt>("rope-radial-seg")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.RadialSegments = evt.newValue; });
-        root.Q<Slider>("rope-gravity")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.Gravity = evt.newValue; });
-        root.Q<SliderInt>("rope-iterations")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.ConstraintIterations = evt.newValue; });
-        root.Q<SliderInt>("rope-substeps")?.RegisterValueChangedCallback(evt => { var r = GetRope(); if (r != null) r.Substeps = evt.newValue; });
+        root.Q<EnumField>("canvas-type")?.RegisterValueChangedCallback(evt => { 
+            if (fluidSim != null) { 
+                fluidSim.surfaceType = (FluidOnlySim.SurfaceType)evt.newValue; 
+                fluidSim.ApplySurfacePreset(); 
+            } 
+        });
 
+        // 4. Target/Fluid Container Rotation
+        root.Q<Slider>("rot-x")?.RegisterValueChangedCallback(e => UpdateRotation("x", e.newValue));
+        root.Q<Slider>("rot-y")?.RegisterValueChangedCallback(e => UpdateRotation("y", e.newValue));
+        root.Q<Slider>("rot-z")?.RegisterValueChangedCallback(e => UpdateRotation("z", e.newValue));
+
+        // 5. Canvas Collision Rotation
+        root.Q<Slider>("canvas-rot-x")?.RegisterValueChangedCallback(evt => { if (fluidSim != null && fluidSim.canvasCollision != null && fluidSim.canvasCollision.transform != null) { Vector3 rot = fluidSim.canvasCollision.transform.localEulerAngles; rot.x = evt.newValue; fluidSim.canvasCollision.transform.localEulerAngles = rot; } });
+        root.Q<Slider>("canvas-rot-y")?.RegisterValueChangedCallback(evt => { if (fluidSim != null && fluidSim.canvasCollision != null && fluidSim.canvasCollision.transform != null) { Vector3 rot = fluidSim.canvasCollision.transform.localEulerAngles; rot.y = evt.newValue; fluidSim.canvasCollision.transform.localEulerAngles = rot; } });
+        root.Q<Slider>("canvas-rot-z")?.RegisterValueChangedCallback(evt => { if (fluidSim != null && fluidSim.canvasCollision != null && fluidSim.canvasCollision.transform != null) { Vector3 rot = fluidSim.canvasCollision.transform.localEulerAngles; rot.z = evt.newValue; fluidSim.canvasCollision.transform.localEulerAngles = rot; } });
+
+        // 6. Hole Placement Logic
         var sliderY = root.Q<Slider>("hole-y");
         root.Q<DropdownField>("hole-placement")?.RegisterValueChangedCallback(evt => {
-            if (activeBucket == null) return;
+            if (fluidSim == null) return;
             if (evt.newValue == "Bottom") {
-                activeBucket.holeOrientation = 0;
-                activeBucket.holePosition = new Vector3(0f, -1f, 0f);
-                topBottomControls.style.display = DisplayStyle.Flex;
-                sideControls.style.display = DisplayStyle.None;
+                fluidSim.holeOrientation = 0;
+                fluidSim.holePosition = new Vector3(0f, -1f, 0f);
+                if(topBottomControls != null) topBottomControls.style.display = DisplayStyle.Flex;
+                if(sideControls != null) sideControls.style.display = DisplayStyle.None;
                 root.Q<Slider>("hole-x")?.SetValueWithoutNotify(0f);
                 root.Q<Slider>("hole-z")?.SetValueWithoutNotify(0f);
             } else if (evt.newValue == "Side") {
-                activeBucket.holeOrientation = 1;
-                activeBucket.holePosition = new Vector3(0.5f, 0f, 0f);
-                topBottomControls.style.display = DisplayStyle.None;
-                sideControls.style.display = DisplayStyle.Flex;
+                fluidSim.holeOrientation = 1;
+                fluidSim.holePosition = new Vector3(0.5f, 0f, 0f);
+                if(topBottomControls != null) topBottomControls.style.display = DisplayStyle.None;
+                if(sideControls != null) sideControls.style.display = DisplayStyle.Flex;
                 if (sliderY != null) {
                     sliderY.lowValue = -1f;
                     sliderY.highValue = 1f;
@@ -345,137 +226,112 @@ if (resetBtn != null)
             }
         });
 
-        root.Q<Slider>("hole-x")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.x = evt.newValue; });
-        root.Q<Slider>("hole-z")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.z = evt.newValue; });
-        root.Q<Slider>("hole-y")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.y = evt.newValue; });
-        root.Q<DropdownField>("hole-side-x")?.RegisterValueChangedCallback(evt => { if(activeBucket!=null) activeBucket.holePosition.x = evt.newValue.StartsWith("Left") ? -0.5f : 0.5f; });
+        root.Q<Slider>("hole-x")?.RegisterValueChangedCallback(evt => { if(fluidSim!=null) fluidSim.holePosition.x = evt.newValue; });
+        root.Q<Slider>("hole-z")?.RegisterValueChangedCallback(evt => { if(fluidSim!=null) fluidSim.holePosition.z = evt.newValue; });
+        root.Q<Slider>("hole-y")?.RegisterValueChangedCallback(evt => { if(fluidSim!=null) fluidSim.holePosition.y = evt.newValue; });
+        root.Q<DropdownField>("hole-side-x")?.RegisterValueChangedCallback(evt => { if(fluidSim!=null) fluidSim.holePosition.x = evt.newValue.StartsWith("Left") ? -0.5f : 0.5f; });
+        root.Q<Slider>("hole-size")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.holeSize = evt.newValue; });
 
-        root.Q<Slider>("hole-size")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.holeSize = evt.newValue; });
-        root.Q<Slider>("time-scale")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.normalTimeScale = evt.newValue; });
-        root.Q<Slider>("max-fps")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.maxTimestepFPS = evt.newValue; });
-        root.Q<SliderInt>("iterations")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.iterationsPerFrame = evt.newValue; });
-        root.Q<Slider>("gravity")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.gravity = evt.newValue; });
-        root.Q<Slider>("radius")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.smoothingRadius = evt.newValue; });
-        root.Q<Slider>("density")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.targetDensity = evt.newValue; });
-        root.Q<Slider>("pressure")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.pressureMultiplier = evt.newValue; });
-        root.Q<Slider>("near-pressure")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.nearPressureMultiplier = evt.newValue; });
-        root.Q<Slider>("stiffness")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.springStiffness = evt.newValue; });
-        root.Q<Slider>("plasticity")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.plasticityRate = evt.newValue; });
-        root.Q<Slider>("yield")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.yieldRatio = evt.newValue; });
-        root.Q<Slider>("viscosity")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.viscosityStrength = evt.newValue; });
-        root.Q<Slider>("damping")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.collisionDamping = evt.newValue; });
-        root.Q<Slider>("weight")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.weightPerParticle = evt.newValue; });
-        root.Q<Slider>("temp-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.temperature = evt.newValue; });
-        root.Q<Slider>("humidity-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.humidity = evt.newValue; });
-        root.Q<Slider>("evap-slider")?.RegisterValueChangedCallback(evt => { if (activeBucket != null) activeBucket.evaporationRate = evt.newValue; });
-        root.Q<Button>("back-to-menu-btn")?.RegisterCallback<ClickEvent>(evt => {
-    UnityEngine.SceneManagement.SceneManager.LoadScene("Main Menu");
-});
-
-root.Q<Slider>("rot-x")?.RegisterValueChangedCallback(e => UpdateRotation("x", e.newValue));
-        root.Q<Slider>("rot-y")?.RegisterValueChangedCallback(e => UpdateRotation("y", e.newValue));
-        root.Q<Slider>("rot-z")?.RegisterValueChangedCallback(e => UpdateRotation("z", e.newValue));
+        // 7. SPH and Environment Variables
+        root.Q<Slider>("time-scale")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.normalTimeScale = evt.newValue; });
+        root.Q<Slider>("max-fps")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.maxTimestepFPS = evt.newValue; });
+        root.Q<SliderInt>("iterations")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.iterationsPerFrame = evt.newValue; });
+        root.Q<Slider>("gravity")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.gravity = evt.newValue; });
+        root.Q<Slider>("radius")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.smoothingRadius = evt.newValue; });
+        root.Q<Slider>("density")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.targetDensity = evt.newValue; });
+        root.Q<Slider>("pressure")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.pressureMultiplier = evt.newValue; });
+        root.Q<Slider>("near-pressure")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.nearPressureMultiplier = evt.newValue; });
+        root.Q<Slider>("stiffness")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.springStiffness = evt.newValue; });
+        root.Q<Slider>("plasticity")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.plasticityRate = evt.newValue; });
+        root.Q<Slider>("yield")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.yieldRatio = evt.newValue; });
+        root.Q<Slider>("viscosity")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.viscosityStrength = evt.newValue; });
+        root.Q<Slider>("damping")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.collisionDamping = evt.newValue; });
+        root.Q<Slider>("weight")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.weightPerParticle = evt.newValue; });
+        root.Q<Slider>("temp-slider")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.temperature = evt.newValue; });
+        root.Q<Slider>("humidity-slider")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.humidity = evt.newValue; });
+        root.Q<Slider>("evap-slider")?.RegisterValueChangedCallback(evt => { if (fluidSim != null) fluidSim.evaporationRate = evt.newValue; });
     }
 
-
-
-    void UpdateVisualsToMatchBucket(VisualElement root, FluidOnlySim bucket)
+    void UpdateVisualsToMatchSim(VisualElement root, FluidOnlySim sim)
     {
-        if (bucket == null) return;
+        if (sim == null) return;
         
-        root.Q<Slider>("color-r")?.SetValueWithoutNotify(bucket.paintColour.r);
-        root.Q<Slider>("color-g")?.SetValueWithoutNotify(bucket.paintColour.g);
-        root.Q<Slider>("color-b")?.SetValueWithoutNotify(bucket.paintColour.b);
-        UpdateColorPreview(bucket.paintColour);
+        // Setup Colors
+        root.Q<Slider>("color-r")?.SetValueWithoutNotify(sim.paintColour.r);
+        root.Q<Slider>("color-g")?.SetValueWithoutNotify(sim.paintColour.g);
+        root.Q<Slider>("color-b")?.SetValueWithoutNotify(sim.paintColour.b);
+        UpdateColorPreview(sim.paintColour);
         
+        // Setup Enums
         var paintEnum = root.Q<EnumField>("paint-type");
-        if(paintEnum != null) { paintEnum.Init(bucket.paintType); paintEnum.SetValueWithoutNotify(bucket.paintType); }
+        if(paintEnum != null) { paintEnum.Init(sim.paintType); paintEnum.SetValueWithoutNotify(sim.paintType); }
         
         var canvasEnum = root.Q<EnumField>("canvas-type");
-        if(canvasEnum != null) { canvasEnum.Init(bucket.surfaceType); canvasEnum.SetValueWithoutNotify(bucket.surfaceType); }
+        if(canvasEnum != null) { canvasEnum.Init(sim.surfaceType); canvasEnum.SetValueWithoutNotify(sim.surfaceType); }
 
-        if (bucket.canvasCollision != null)
+        // Container/Canvas rotations
+        if (targetTransform != null)
         {
-            Vector3 canvasRot = bucket.canvasCollision.transform.localEulerAngles;
-            canvasRot.x = -30f; 
-            bucket.canvasCollision.transform.localEulerAngles = canvasRot;
-            
+            Vector3 targetRot = targetTransform.localEulerAngles;
+            root.Q<Slider>("rot-x")?.SetValueWithoutNotify(targetRot.x);
+            root.Q<Slider>("rot-y")?.SetValueWithoutNotify(targetRot.y);
+            root.Q<Slider>("rot-z")?.SetValueWithoutNotify(targetRot.z);
+        }
+
+        if (sim.canvasCollision != null && sim.canvasCollision.transform != null)
+        {
+            Vector3 canvasRot = sim.canvasCollision.transform.localEulerAngles;
             root.Q<Slider>("canvas-rot-x")?.SetValueWithoutNotify(canvasRot.x);
             root.Q<Slider>("canvas-rot-y")?.SetValueWithoutNotify(canvasRot.y);
             root.Q<Slider>("canvas-rot-z")?.SetValueWithoutNotify(canvasRot.z);
         }
 
-        var pendulum = GetPendulum();
-        if (pendulum != null)
-        {
-            root.Q<Slider>("pen-theta-vel")?.SetValueWithoutNotify(pendulum.ThetaAngularVelocity);
-            root.Q<Slider>("pen-phi-vel")?.SetValueWithoutNotify(pendulum.PhiAngularVelocity);
-            root.Q<Slider>("pen-theta-deg")?.SetValueWithoutNotify(pendulum.ThetaDegree);
-            root.Q<Slider>("pen-phi-deg")?.SetValueWithoutNotify(pendulum.PhiDegree);
-            root.Q<Slider>("pen-gravity")?.SetValueWithoutNotify(pendulum.Gravity);
-            root.Q<Slider>("pen-air-density")?.SetValueWithoutNotify(pendulum.AirDensity);
-            root.Q<Slider>("swinging-rate")?.SetValueWithoutNotify(pendulum.SwingingRate);
-            root.Q<Slider>("pen-drag")?.SetValueWithoutNotify(pendulum.DragCoefficient);
-        }
-
-        var rope = GetRope();
-        if (rope != null)
-        {
-            var ropeTypeField = root.Q<EnumField>("rope-type");
-            if (ropeTypeField != null) { ropeTypeField.Init(rope.Type); ropeTypeField.SetValueWithoutNotify(rope.Type); }
-
-            root.Q<Slider>("rope-length")?.SetValueWithoutNotify(rope.RopeLengthProperty);
-            root.Q<Slider>("rope-mass")?.SetValueWithoutNotify(rope.TotalRopeMass);
-            root.Q<SliderInt>("rope-segments")?.SetValueWithoutNotify(rope.NumSegments);
-            root.Q<Slider>("rope-radius")?.SetValueWithoutNotify(rope.RopeRadius);
-            root.Q<SliderInt>("rope-radial-seg")?.SetValueWithoutNotify(rope.RadialSegments);
-            root.Q<Slider>("rope-gravity")?.SetValueWithoutNotify(rope.Gravity);
-            root.Q<SliderInt>("rope-iterations")?.SetValueWithoutNotify(rope.ConstraintIterations);
-            root.Q<SliderInt>("rope-substeps")?.SetValueWithoutNotify(rope.Substeps);
-        }
-
-        root.Q<Slider>("time-scale")?.SetValueWithoutNotify(bucket.normalTimeScale);
-        root.Q<Slider>("max-fps")?.SetValueWithoutNotify(bucket.maxTimestepFPS);
-        root.Q<SliderInt>("iterations")?.SetValueWithoutNotify(bucket.iterationsPerFrame);
-        root.Q<Slider>("gravity")?.SetValueWithoutNotify(bucket.gravity);
-        root.Q<Slider>("radius")?.SetValueWithoutNotify(bucket.smoothingRadius);
-        root.Q<Slider>("density")?.SetValueWithoutNotify(bucket.targetDensity);
-        root.Q<Slider>("pressure")?.SetValueWithoutNotify(bucket.pressureMultiplier);
-        root.Q<Slider>("near-pressure")?.SetValueWithoutNotify(bucket.nearPressureMultiplier);
-        root.Q<Slider>("stiffness")?.SetValueWithoutNotify(bucket.springStiffness);
-        root.Q<Slider>("plasticity")?.SetValueWithoutNotify(bucket.plasticityRate);
-        root.Q<Slider>("yield")?.SetValueWithoutNotify(bucket.yieldRatio);
-        root.Q<Slider>("viscosity")?.SetValueWithoutNotify(bucket.viscosityStrength);
-        root.Q<Slider>("damping")?.SetValueWithoutNotify(bucket.collisionDamping);
-        root.Q<Slider>("weight")?.SetValueWithoutNotify(bucket.weightPerParticle);
-        root.Q<Slider>("temp-slider")?.SetValueWithoutNotify(bucket.temperature);
-        root.Q<Slider>("humidity-slider")?.SetValueWithoutNotify(bucket.humidity);
-        root.Q<Slider>("evap-slider")?.SetValueWithoutNotify(bucket.evaporationRate);
-        root.Q<Slider>("hole-size")?.SetValueWithoutNotify(bucket.holeSize);
+        // SPH and Env settings
+        root.Q<Slider>("time-scale")?.SetValueWithoutNotify(sim.normalTimeScale);
+        root.Q<Slider>("max-fps")?.SetValueWithoutNotify(sim.maxTimestepFPS);
+        root.Q<SliderInt>("iterations")?.SetValueWithoutNotify(sim.iterationsPerFrame);
+        root.Q<Slider>("gravity")?.SetValueWithoutNotify(sim.gravity);
+        root.Q<Slider>("radius")?.SetValueWithoutNotify(sim.smoothingRadius);
+        root.Q<Slider>("density")?.SetValueWithoutNotify(sim.targetDensity);
+        root.Q<Slider>("pressure")?.SetValueWithoutNotify(sim.pressureMultiplier);
+        root.Q<Slider>("near-pressure")?.SetValueWithoutNotify(sim.nearPressureMultiplier);
+        root.Q<Slider>("stiffness")?.SetValueWithoutNotify(sim.springStiffness);
+        root.Q<Slider>("plasticity")?.SetValueWithoutNotify(sim.plasticityRate);
+        root.Q<Slider>("yield")?.SetValueWithoutNotify(sim.yieldRatio);
+        root.Q<Slider>("viscosity")?.SetValueWithoutNotify(sim.viscosityStrength);
+        root.Q<Slider>("damping")?.SetValueWithoutNotify(sim.collisionDamping);
+        root.Q<Slider>("weight")?.SetValueWithoutNotify(sim.weightPerParticle);
+        root.Q<Slider>("temp-slider")?.SetValueWithoutNotify(sim.temperature);
+        root.Q<Slider>("humidity-slider")?.SetValueWithoutNotify(sim.humidity);
+        root.Q<Slider>("evap-slider")?.SetValueWithoutNotify(sim.evaporationRate);
+        root.Q<Slider>("hole-size")?.SetValueWithoutNotify(sim.holeSize);
         
+        // Hole Placements
         var holePlacement = root.Q<DropdownField>("hole-placement");
-        if (bucket.holeOrientation == 1) 
+        if (sim.holeOrientation == 1) 
         {
             holePlacement?.SetValueWithoutNotify("Side");
-            topBottomControls.style.display = DisplayStyle.None;
-            sideControls.style.display = DisplayStyle.Flex;
+            if (topBottomControls != null) topBottomControls.style.display = DisplayStyle.None;
+            if (sideControls != null) sideControls.style.display = DisplayStyle.Flex;
             
             var sliderY = root.Q<Slider>("hole-y");
             if (sliderY != null)
             {
                 sliderY.lowValue = -1f;
                 sliderY.highValue = 1f;
-                sliderY.SetValueWithoutNotify(bucket.holePosition.y);
+                sliderY.SetValueWithoutNotify(sim.holePosition.y);
             }
-            root.Q<DropdownField>("hole-side-x")?.SetValueWithoutNotify(bucket.holePosition.x < 0 ? "Left (-0.5)" : "Right (0.5)");
+            root.Q<DropdownField>("hole-side-x")?.SetValueWithoutNotify(sim.holePosition.x < 0 ? "Left (-0.5)" : "Right (0.5)");
         } 
         else 
         {
             holePlacement?.SetValueWithoutNotify("Bottom");
-            topBottomControls.style.display = DisplayStyle.Flex;
-            sideControls.style.display = DisplayStyle.None;
-            root.Q<Slider>("hole-x")?.SetValueWithoutNotify(bucket.holePosition.x);
-            root.Q<Slider>("hole-z")?.SetValueWithoutNotify(bucket.holePosition.z);
+            
+            if (topBottomControls != null) topBottomControls.style.display = DisplayStyle.Flex;
+            if (sideControls != null) sideControls.style.display = DisplayStyle.None;
+            
+            root.Q<Slider>("hole-x")?.SetValueWithoutNotify(sim.holePosition.x);
+            root.Q<Slider>("hole-z")?.SetValueWithoutNotify(sim.holePosition.z);
         }
     }
 }
