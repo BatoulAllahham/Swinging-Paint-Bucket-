@@ -12,6 +12,7 @@
 #pragma kernel ApplySpringForces
 #pragma kernel MapOriginalToNew
 #pragma kernel CalculatePaintCoverage
+// #pragma kernel EvaporatePaint
 
 // Includes
 #include "./FluidMaths3D.hlsl"
@@ -724,6 +725,13 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     float effectiveSurfaceTension = max(0.01, 0.072 - 0.0004 * (temperature - 20.0));
     float tempSpreadFactor = clamp(0.072 / effectiveSurfaceTension, 0.5, 2.0);
 
+    // HUMIDITY: humid air keeps the deposit wet/thin longer, so it spreads a bit wider
+    // and reads more transparent; dry air lets it set almost immediately, so it stays
+    // more concentrated in a smaller, more opaque splat. Centered on 0.5 (the slider's
+    // default) so default behaviour is unchanged; clamped to +/-30% either way.
+    float humiditySpreadFactor = clamp(1.0 + (humidity - 0.5) * 0.6, 0.7, 1.3);
+    float humidityOpacityFactor = clamp(1.0 - (humidity - 0.5) * 0.6, 0.7, 1.3);
+
     if (ParticleStates[id.x] == 2)
     {
         float3 n = canvasNormal;
@@ -816,13 +824,15 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
             float prevUvY = 1.0 - (prevV / canvasHalfSize.y + 1.0) * 0.5;
             float2 prevPixelPos = float2(prevUvX, prevUvY) * paintTextureSize;
 
-            // TEMPERATURE
+            // TEMPERATURE + HUMIDITY + goodi
             float movePixels = length(pixelPos - prevPixelPos);
 
-            int radius = max(
-    3,
-    (int) (lerp(4, 2, paintFlowRate) + movePixels * 0.25) * tempSpreadFactor);
-            float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate);
+            int radius = max(3,(int) (lerp(4, 2, paintFlowRate) + movePixels * 0.25) * tempSpreadFactor * humiditySpreadFactor);
+            float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate)* humidityOpacityFactor;
+
+            
+            // int radius = max(2, (int) (lerp(4, 2, paintFlowRate) * tempSpreadFactor * humiditySpreadFactor));
+            // float trailAlpha = length(vel) * (1.0 - effectiveAbsorb) * lerp(0.8, 0.2, paintFlowRate) * humidityOpacityFactor;
 
             float3 newPigment = sqrt(clamp(paintColour.rgb, 0.0, 1.0));
 
@@ -1079,8 +1089,8 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
         // Radius: your original formula, scaled by paintSpread
         //int radius = (int)(lerp(2, 10, absorb + rough * 0.5) * paintSpread);
         //radius = max(radius, 1);
-        // TEMPERATURE
-        float spreadScale = lerp(1.0, paintSpread, paintFlowRate) * tempSpreadFactor;
+        // TEMPERATURE + HUMIDITY
+        float spreadScale = lerp(1.0, paintSpread, paintFlowRate) * tempSpreadFactor * humiditySpreadFactor;
         
 
         
@@ -1236,8 +1246,10 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
                 alpha *= lerp(1.0, 0.85, rough * distF);//خشونة
                 alpha *= (1.0 - effectiveAbsorb * 0.5);
 
-                // ENVIRONMENT
-                // alpha *= humidityOpacityFactor;
+                // HUMIDITY
+                alpha *= humidityOpacityFactor;
+
+                // ENVIRONMENT (evaporation not yet implemented — needs per-pixel drying over time)
                 // alpha = max(0.0, alpha - evapFade);
 
 
