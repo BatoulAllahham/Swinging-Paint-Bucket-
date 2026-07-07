@@ -57,7 +57,7 @@ public class MixingSceneUI : MonoBehaviour
     static readonly float[] PressPresets = { 200f, 200f, 200f };
     static readonly float[] NearPresets = { 2f, 2f, 2f };
 
-    GUIStyle _box, _lbl, _hdr, _btn, _btnActive;
+    GUIStyle _box, _lbl, _hdr, _btn, _btnActive, _backBtn;
     bool _stylesReady;
 
     // OrbitCam reads this to skip input when the mouse is over the UI panel
@@ -88,8 +88,9 @@ public class MixingSceneUI : MonoBehaviour
         float my = (Screen.height - Input.mousePosition.y) / uiScale;
         var mouseGUI = new Vector2(mx, my);
         var toggleRect = new Rect(4, 4, 28, 20);
+        var backRect = new Rect(Screen.width / uiScale - 90f, 4, 80, 26);
         var panelRect = new Rect(10, 10, 270f, Screen.height / uiScale - 20f);
-        MouseOverUI = toggleRect.Contains(mouseGUI) || (_showUI && panelRect.Contains(mouseGUI));
+        MouseOverUI = toggleRect.Contains(mouseGUI) || backRect.Contains(mouseGUI) || (_showUI && panelRect.Contains(mouseGUI));
     }
 
     // ── GUI ───────────────────────────────────────────────────────────────────
@@ -106,6 +107,10 @@ public class MixingSceneUI : MonoBehaviour
         // Small always-visible toggle button so you can show the panel without keyboard
         if (GUI.Button(new Rect(4, 4, 28, 20), _showUI ? "◀" : "▶", _btn))
             _showUI = !_showUI;
+
+        // Top-right corner, well clear of the setup/running panel, with its own colour so it stands out
+        if (GUI.Button(new Rect(Screen.width / uiScale - 90f, 4, 80, 26), "Back", _backBtn))
+            UnityEngine.SceneManagement.SceneManager.LoadScene("Main Menu");
 
         if (!_showUI) return;
 
@@ -319,6 +324,12 @@ public class MixingSceneUI : MonoBehaviour
         _btnActive = new GUIStyle(_btn);
         _btnActive.normal.background = MakeTex(new Color(0.20f, 0.50f, 1.00f, 1f));
         _btnActive.hover.background = MakeTex(new Color(0.30f, 0.60f, 1.00f, 1f));
+
+        _backBtn = new GUIStyle(_btn);
+        _backBtn.fontSize = 12;
+        _backBtn.fontStyle = FontStyle.Bold;
+        _backBtn.normal.background = MakeTex(new Color(0.18f, 0.18f, 0.20f, 1f));
+        _backBtn.hover.background = MakeTex(new Color(0.28f, 0.28f, 0.30f, 1f));
 
         _stylesReady = true;
     }

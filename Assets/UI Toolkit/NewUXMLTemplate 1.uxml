@@ -19,7 +19,9 @@
                     
                     <ui:VisualElement class="card">
                         <ui:Label text="PAINT &amp; CANVAS INITIAL OPTIONS" class="card-title" />
-                        
+
+                        <ui:DropdownField name="canvas-object" label="Canvas Object" />
+
                         <ui:VisualElement class="color-picker-container">
                             <ui:VisualElement name="color-preview" class="color-preview-box-large" />
                             <ui:VisualElement class="color-sliders-group">
